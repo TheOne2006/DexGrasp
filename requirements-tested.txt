@@ -1,0 +1,6 @@
+# Versions observed in the existing graspsim-eval interpreter; no environment was changed.
+# Torch CUDA wheel/build is recorded separately in outputs/preparation/gpu_smoke.json.
+numpy==1.26.4
+torch==2.10.0
+h5py==3.16.0
+mujoco==3.7.0

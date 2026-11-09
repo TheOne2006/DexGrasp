@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "architecture": "pointnet_transformer",
+  "objective": "diffusion",
+  "manifest": "../../data/manifests/dexonomy_kp.json",
+  "run_dir": "../../outputs/native/pointnet_transformer_diffusion_s0",
+  "checkpoint_dir": "../../checkpoints/native/pointnet_transformer_diffusion_s0",
+  "sample_steps": 20
+}

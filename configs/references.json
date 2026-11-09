@@ -1,0 +1,110 @@
+[
+  {
+    "name": "DexGraspNet2",
+    "path": "../../reference/DexGraspNet2",
+    "url": "https://github.com/PKU-EPIC/DexGraspNet2.git",
+    "role": "Cluttered-scene diffusion, Leap Hand; separate dataset/protocol",
+    "scope": "train / test",
+    "usage": "阅读并选择性复用局部几何、扩散与杂乱场景流水线；当前只提供官方启动计划。",
+    "code_entries": [
+      "src/utils/dataset.py",
+      "src/network/graspness_sample.py",
+      "src/network/diffusion.py",
+      "src/train.py",
+      "src/eval/evaluate_dexterous.py"
+    ],
+    "dependencies": [
+      "MinkowskiEngine",
+      "PyTorch3D",
+      "diffusers",
+      "Isaac Gym (upstream evaluation)"
+    ]
+  },
+  {
+    "name": "KPGrasp",
+    "path": "../../reference/KPGrasp",
+    "url": "https://github.com/Yuansen-Huang/KPGrasp.git",
+    "role": "Shadow 28-keypoint FM and FlowMap; primary keypoint reference",
+    "scope": "data / train / test",
+    "usage": "当前 FK 读取关键点名和手模型，IK 动态调用上游求解器；训练仅参考计划，未导入官方网络。",
+    "code_entries": [
+      "docs/DATA.md",
+      "src/dexgrasp/dataset/kdex.py",
+      "src/dexgrasp/network/flow_method.py",
+      "src/dexgrasp/network/policy/transformer.py",
+      "src/dexgrasp/kinematics/ik.py",
+      "assets/hand/shadow/right_hand_w_kp.xml"
+    ],
+    "dependencies": [
+      "MinkowskiEngine",
+      "PyTorch3D",
+      "flow_matching",
+      "MuJoCo",
+      "mink",
+      "quadprog"
+    ]
+  },
+  {
+    "name": "DexLearn",
+    "path": "../../reference/DexLearn",
+    "url": "https://github.com/JYChen18/DexLearn.git",
+    "role": "Dexonomy diffusion and normalizing-flow reference",
+    "scope": "train",
+    "usage": "阅读并选择性复用条件编码、扩散/NF输出头；当前只提供官方启动计划。",
+    "code_entries": [
+      "dexlearn/dataset/base_dex.py",
+      "dexlearn/network/models/base.py",
+      "dexlearn/network/final_layers/diffusion.py",
+      "dexlearn/network/final_layers/normalizing_flow.py",
+      "dexlearn/train.py"
+    ],
+    "dependencies": [
+      "MinkowskiEngine",
+      "PyTorch3D",
+      "diffusers",
+      "nflows"
+    ]
+  },
+  {
+    "name": "Dexonomy",
+    "path": "../../reference/Dexonomy",
+    "url": "https://github.com/JYChen18/Dexonomy.git",
+    "role": "Dataset provenance, taxonomy and generation",
+    "scope": "data",
+    "usage": "数据与抓型来源、模板/优化合成参考；不作为自有监督训练的运行依赖。",
+    "code_entries": [
+      "dexonomy/main.py",
+      "dexonomy/script.py",
+      "dexonomy/script_admm.py",
+      "getting_started/2_running_tutorial.md",
+      "getting_started/3_ADMM.md"
+    ],
+    "dependencies": [
+      "MuJoCo",
+      "mujoco_menagerie",
+      "BODex (optional trajectory generation)"
+    ]
+  },
+  {
+    "name": "DexGraspBench",
+    "path": "../../reference/DexGraspBench",
+    "url": "https://github.com/JYChen18/DexGraspBench.git",
+    "role": "MuJoCo physical evaluation",
+    "scope": "test",
+    "usage": "采用 Learning 格式与 MuJoCo 评估协议；当前仅生成 format/eval/stat 命令，不执行仿真。",
+    "code_entries": [
+      "src/main.py",
+      "src/task/convert_format.py",
+      "src/task/evaluation.py",
+      "src/task/statistic.py",
+      "config/task/eval.yaml",
+      "config/hand/shadow.yaml"
+    ],
+    "dependencies": [
+      "MuJoCo",
+      "hydra-core",
+      "qpsolvers",
+      "mujoco_menagerie"
+    ]
+  }
+]

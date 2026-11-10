@@ -1,0 +1,88 @@
+diff --git a/src/3rdparty/concurrent_unordered_map.cuh b/src/3rdparty/concurrent_unordered_map.cuh
+index ed8e1b2..320feeb 100644
+--- a/src/3rdparty/concurrent_unordered_map.cuh
++++ b/src/3rdparty/concurrent_unordered_map.cuh
+@@ -25,6 +25,7 @@
+ #include <cudf/detail/utilities/device_atomics.cuh>
+ #include <cudf/utilities/error.hpp>
+ 
++#include <thrust/execution_policy.h>
+ #include <thrust/pair.h>
+ #include <thrust/count.h>
+ 
+diff --git a/src/3rdparty/cudf/detail/nvtx/ranges.hpp b/src/3rdparty/cudf/detail/nvtx/ranges.hpp
+index 10f5916..860d398 100644
+--- a/src/3rdparty/cudf/detail/nvtx/ranges.hpp
++++ b/src/3rdparty/cudf/detail/nvtx/ranges.hpp
+@@ -16,7 +16,11 @@
+ 
+ #pragma once
+ 
++#if __has_include(<nvtx3/nvtx3.hpp>)
++#include <nvtx3/nvtx3.hpp>
++#else
+ #include "nvtx3.hpp"
++#endif
+ 
+ namespace cudf {
+ /**
+@@ -31,7 +35,11 @@ struct libcudf_domain {
+  * @brief Alias for an NVTX range in the libcudf domain.
+  *
+  */
++#if __has_include(<nvtx3/nvtx3.hpp>)
++using thread_range = ::nvtx3::scoped_range_in<libcudf_domain>;
++#else
+ using thread_range = ::nvtx3::domain_thread_range<libcudf_domain>;
++#endif
+ 
+ }  // namespace cudf
+ 
+diff --git a/src/coordinate_map_gpu.cu b/src/coordinate_map_gpu.cu
+index fb7325d..a71de31 100644
+--- a/src/coordinate_map_gpu.cu
++++ b/src/coordinate_map_gpu.cu
+@@ -36,6 +36,10 @@
+ #include <thrust/iterator/counting_iterator.h>
+ #include <thrust/iterator/transform_iterator.h>
+ #include <thrust/sort.h>
++#include <thrust/remove.h>
++#include <thrust/unique.h>
++#include <thrust/scan.h>
++#include <thrust/sequence.h>
+ 
+ namespace minkowski {
+ 
+diff --git a/src/coordinate_map_gpu.cuh b/src/coordinate_map_gpu.cuh
+index 15228c4..dc97869 100644
+--- a/src/coordinate_map_gpu.cuh
++++ b/src/coordinate_map_gpu.cuh
+@@ -136,9 +136,13 @@ public:
+       LOG_DEBUG("Reserve map of",
+                 compute_hash_table_size(size, m_hashtable_occupancy),
+                 "for concurrent_unordered_map of size", size);
+-      m_map = map_type::create(
++      auto unique_map = map_type::create(
+           compute_hash_table_size(size, m_hashtable_occupancy),
+           m_unused_element, m_unused_key, m_hasher, m_equal, m_map_allocator);
++      // Preserve the custom deleter without the GCC13/CUDA ADL ambiguity
++      // in shared_ptr's converting constructor from unique_ptr.
++      auto deleter = unique_map.get_deleter();
++      m_map = std::shared_ptr<map_type>(unique_map.release(), std::move(deleter));
+       LOG_DEBUG("Done concurrent_unordered_map creation");
+       CUDA_TRY(cudaStreamSynchronize(0));
+       m_capacity = size;
+diff --git a/src/spmm.cu b/src/spmm.cu
+index 8891a56..3815139 100644
+--- a/src/spmm.cu
++++ b/src/spmm.cu
+@@ -28,6 +28,9 @@
+ #include "math_functions.cuh"
+ 
+ #include <cusparse.h>
++#include <thrust/execution_policy.h>
++#include <thrust/sort.h>
++#include <thrust/reduce.h>
+ 
+ #include <ATen/core/Tensor.h>
+ #include <ATen/cuda/CUDAContext.h>

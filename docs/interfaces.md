@@ -1,97 +1,101 @@
-# 数据、训练与测试接口
+# Data v1 与命令接口
 
-所有命令从自有 `DexGrasp/` 仓库运行。`python` 指选定环境的解释器，不依赖 shell 自动激活。JSON 输出适合后续 agent 解析；退出码 0 表示命令成功，2 表示配置/数据阻塞或错误。`planned` 不表示训练完成，`reference_plan_only` 不表示参考环境已就绪。
+本版只接受 Sharpa 22 自由度、21 个固定顺序关键点。坐标单位米、关节角单位弧度。
 
-## 数据协议
+```text
+dataset_v1/
+├── assets/                       mesh 与原始抓姿 NPZ
+├── scenes/<scene_id>.json         实例、canonical object_id、split、视角和抓姿引用
+├── hand/hand_spec.json            标定后的手模型；相对路径引用 URDF
+├── shards/part-00000.h5           prepare-data 生成
+├── splits/{train,val,test}.jsonl  prepare-data 生成
+├── preparation.json              输入指纹、采样协议和样本数
+└── invalid_labels.jsonl           无效抓姿/间距的原因
+```
 
-首批自有模型共享 `shadow28_xyz_m_3phase`：Shadow Hand，三个阶段依次 pregrasp/grasp/squeeze，每阶段 28×3 关键点，单位米。关键点名称和顺序取自本地 KPGrasp 的 `kinematics/ik.py`。这是第一版适配器的协议，不是对项目最终表示的决定；RTJ、Leap Hand 和 RL trajectory 必须增加各自的表示、转换和评测适配器，不能冒用此标识。
+## 原始场景
 
-规范 NPZ（无 pickle）包含：
-
-| 字段 | 形状 | 约定 |
-| --- | --- | --- |
-| point_cloud | N×3 | 与抓取姿态同一坐标系、已应用物体缩放，单位米 |
-| keypoints | G×3×28×3 | G>0，同一物体场景的多个抓姿；纯测试点云可不含此字段 |
-
-采样接口不将测试关键点输入模型；测试只有点云也可工作。训练时用完整点云均值居中，点云和关键点同时除以固定 `scale_m=0.1`；输出做逆变换。此归一化不使用验证/测试集统计量。训练按物体、该物体记录、记录内抓姿三级均匀抽样，采样分布与官方实现不完全相同。
-
-输入 catalog 示例：
+每个 JSON 对应一份观测；`object_id` 是跨尺度、视角和抓姿一致的物体身份，不能用实例 ID 代替。不同观测可使用不同文件名，但 `(scene_id,view_id)` 必须唯一。同一场景与同一物体都不能跨 split。相机信息可记录为对象或 `null`。
 
 ```json
-[
-  {"id":"DGN/a/scale008","object_id":"DGN/a","official_split":"train","storage":"npz","path":"../processed/a008.npz","scene_path":"../raw/object/DGN/scene_cfg/a/floating/scale008.npy"},
-  {"id":"DGN/b/scale008","object_id":"DGN/b","official_split":"train","storage":"npz","path":"../processed/b008.npz"},
-  {"id":"DGN/c/scale008","object_id":"DGN/c","official_split":"test","storage":"npz","path":"../processed/c008.npz"}
-]
+{
+  "scene_id": "S001", "view_id": "V003", "object_id": "bottle_asset_001",
+  "split": "train", "target_id": "bottle", "camera": null,
+  "collision_validation_version": "填写真实外部验证协议版本",
+  "grasps": "assets/S001_grasps.npz",
+  "instances": [
+    {"instance_id": "bottle", "mesh": "assets/bottle/mesh.npz", "scale": 1.0,
+     "R": [[1,0,0],[0,1,0],[0,0,1]], "t": [0,0,0]},
+    {"instance_id": "table", "mesh": "assets/table/mesh.npz", "scale": [1,1,1],
+     "R": [[1,0,0],[0,1,0],[0,0,1]], "t": [0,0,0]}
+  ]
+}
 ```
 
-同一物体的不同尺寸、视角、抓型和姿态必须使用同一 `object_id`，跨数据集的相同几何资产也应先统一身份。工具能检测声明的 ID 泄漏、跨 split 复用 NPZ 和重叠 HDF5 行，不能仅凭文件名发现不同 ID 下复制的同一网格。正式下载后还需做网格身份去重。
+mesh NPZ 字段为 `vertices[N,3]` 和整数 `faces[F,3]`；其他网格格式通过可选 trimesh 导入。先按实例 scale 与 R/t 变换到场景系，再按变换后的面积采样。环境各实例合并后按总面积采样，不能给每个物体相同点数。目标独立采 1024；场景重新采目标 512、环境/桌面 1536；场景点和 mask 同步重排。
 
-```bash
-python -m dexgrasp_lab prepare-catalog --catalog ../data/manifests/catalog.json --output ../data/manifests/dexonomy_kp.json --seed 0 --val-fraction 0.1
-python -m dexgrasp_lab audit-data --manifest ../data/manifests/dexonomy_kp.json --deep
+抓姿 NPZ 包含 `R[G,3,3]、t[G,3]、q[G,22]、valid[G] bool、grasp_id[G]`。`valid` 是已有外部抓姿有效性检查的结果，prepare 不会自行模拟抓取。放入新障碍后的旧 success 标签不能直接沿用。
+
+## 手模型与标签
+
+从 `configs/hand_spec.template.json` 填写真实数据，不得仅把 `calibrated` 改为 true：
+
+- `urdf`、`root_link`、`joint_order[22]`；适配器支持有界 revolute/prismatic 与 fixed，遇到 mimic/continuous 等未支持关节明确拒绝。需要扩展时，依据真实 Sharpa 资产验证关节定义。
+- `keypoints[21]` 各含 `name、link、local_xyz_m、palm_anchor`；至少 3 个不共线锚点必须对 root 刚性固定。
+- `approach_axis=[0,0,1]`；`reference_length_m` 固定手部参考长度，与坐标尺度独立。
+- `palm.normal` 为单位测量法向；`palm.ray_origins_m[N,3]` 是预先标定并均匀覆盖固定平面区域的射线起点，N≥64。
+- `keypoint_map_version`、`label_version` 冻结后用于跟踪定义变化。
+
+FK 得到 `K=R FK(q)+t`，`d=R[:,2]`。掌面射线在完整目标 mesh 上找第一非负交点，至少命中 64 条，h 为命中距离中位数。目标 mesh 须闭合且面朝向一致，以检测掌面射线起点是否已进入物体；未命中或穿透记录无效原因，不截成零。
+
+这只是掌面标签有效性检查，不是整只手的碰撞检测。测量区域适用性仍需先在瓶身侧抓子集标定。
+
+## HDF5
+
+| group | 字段 | dtype / 每行形状 |
+| --- | --- | --- |
+| observations | object_points / scene_points | float32 `[1024,3]` / `[2048,3]` |
+| observations | scene_mask | uint8 `[2048]`，恰好 512 个 1 |
+| observations | scene_id / view_id / object_id | UTF-8 string |
+| grasps | observation_index | int64 scalar，引用本 shard 观测 |
+| grasps | grasp_id | UTF-8 string |
+| grasps | R / t / q / K / d / h | float32 `[3,3] / [3] / [22] / [21,3] / [3] / [1]` |
+| grasps | hit_ratio | float32 scalar |
+
+文件 attributes：`schema_version=1`、`hand_spec_sha256`、`label_version`、`point_sampling=full_mesh_area_uniform`。分片阈值可能使同一观测出现在相邻 shard；每个 shard 内的多条抓姿只引用一份点云。
+
+split 每行：`{"shard":"shards/part-00000.h5","grasp_index":0}`。路径相对于 dataset 根，拒绝路径越界、负索引、重复引用和跨 split 泄漏。审计检查全部引用行的 dtype、形状、有限性、R、d、h、命中数、关节限位及 K 与标定 FK 的一致性。
+
+## DataLoader
+
+`GraspDataset` 输出 `condition`、`keypoints_gt`、`metadata`。训练和推理共用同一归一化：目标点均值为 o，固定尺度 L，object/scene/K 都执行 `(x-o)/L`；d 不缩放，h 保持米制，由模型除以手参考长度。
+
+HDF5 文件句柄和观测 LRU 缓存各 worker 独立，均有容量上限。只读取指定抓姿行，没有把整个 shard 载入内存。FM 噪声与时间在训练时生成，不保存为静态样本。
+
+## FM、FlowMap 与恢复
+
+`python -m dexgrasp train --config configs/{fm,flowmap}.json` 默认仅检查计划，`--execute` 才更新参数。FlowMap 在线生成训练集条件下的教师轨迹，抽同一轨迹的 `(K_a,K_b)`，不缓存或混用 val/test 蒸馏监督。教师冻结且处于 eval 模式。
+
+检查点包含配置、模型/优化器状态、源码指纹、划分 hash、HDF5 文件尺寸/mtime、手模型和教师指纹、依赖版本/原生扩展指纹、RNG 与步数。HDF5 尺寸/mtime 是变化检测，不是完整内容 hash；文件应冻结并保留数据版本。恢复检查同一配置、代码和数据身份；prefetch 不影响 batch 游标。改变实验配置时使用新 run。
+
+验证只用于诊断：FM 用固定随机数的速度 MSE；FlowMap 用固定噪声的生成终点与配对真值 MSE。多模态任务的配对 MSE 不等同于生成质量，更不是抓取成功率。`best.pt` 仅按该诊断指标选取。
+
+## test 与物理结果
+
+`sample` 生成米制 K，保存 d/h 和样本身份；`decode` 输出每个候选的 R/t/q、重建误差、方向误差和重新测量的掌面间距。IK 使用解析 FK 雅可比和真实 URDF 关节限位，不做无报告的角度截断。不可达候选会标记失败。
+
+`test --decoded decoded.jsonl` 报告几何控制结果，未测物理结果为 null。外部评估器可通过 `--verdicts verdicts.jsonl` 提供逐候选结果：
+
+```json
+{"sample_index":0,"candidate_index":0,"collision_free":true,"physical_success":false,"evaluator":"实际评估器名称","protocol_version":"已冻结版本","decoded_sha256":"该 decoded.jsonl 文件的 SHA256"}
 ```
 
-工具保留官方 test，从官方 train 物体中稳定划出验证集。同一 seed、不同输入排序产生相同物体划分。不会生成空的“已准备”manifest。深检查检查所有记录的形状/边界，并每记录读取一个确定性样本检查有限值；不是对所有抓姿的逐元素扫描。每次训练实际访问样本时也检查有限值。
+索引对应同一次 sample/decode 文件；接口强制核对 decoded 文件 SHA256，拒绝混用其他候选的结果。缺少任何候选的物理结果时，只报告覆盖率与已验证成功数，完整联合成功率保持 null。全部结果齐全时，联合成功需同时满足 IK/限位、间距容差、方向容差、无碰撞和物理成功；测量无效与无解留在分母中。
 
-## 两种准备入口
+CLI 默认间距容差 5 mm、方向容差 10°、IK 重建容差 3 mm 只是工程初值，正式 test 前应按任务冻结。sample 计时含点云编码与生成，decode 单独计时；没有外部碰撞、仿真和规划计时就不能声称端到端耗时。
 
-已有 KPGrasp 关键点 HDF5 时：
+## 新场景与条件扫描
 
-```bash
-python -m dexgrasp_lab prepare-kpgrasp --root ../data/raw/dexonomy --output ../data/manifests/dexonomy_kp.json
-```
+`sample --palm-gap-m 0.02 --direction 0 0 1` 只覆盖推理条件，不修改训练标签。固定 `--seed` 和场景、方向，改变间距可做连续控制扫描；固定条件改变 seed 可看候选多样性。样本文件记录实际使用的 h/d 与覆盖参数。
 
-输入结构严格遵照 KPGrasp `docs/DATA.md`，包括两个 collection、官方划分、`dex_kp_h5/index_obj_grasp.json`、shards 和 `vision_data/compl_pc.h5`。索引 `[offset,count,shard]` 按行惰性读取，不把整个 shard 放入 RAM。默认拒绝缺少索引或点云的物体，避免静默缩小测试集。
-
-这个入口主要用于监督学习对照；每个物体记录可含多个 scale，当前不会猜测所抽样 scale 对应的物理 `scene_path`。需要完整物理评测时，用按 scene/scale 组织的 NPZ catalog，或另做经核对的场景适配器。未提供正确 scene_path 的采样会在 IK 导出前明确报错。
-
-只有关节姿态时，先把三个 `*_qpos` 数组整理为无 pickle NPZ，每个 `(G,29)`，含 xyz+wxyz+22 joints。原始 Dexonomy 的字典 NPY 和作者机器上的绝对 `scene_path` 需要在数据下载后核实再转换；本轮没有猜测其路径映射。每份 NPZ 对应一个固定物体 scale。点云输入 NPY 是未缩放物体坐标，姿态平移已是米。
-
-```bash
-python -m dexgrasp_lab convert-qpos --source /absolute/poses.npz --cloud /absolute/pc.npy --output /absolute/scene008.npz --kpgrasp-root ../reference/KPGrasp --joint-order /absolute/input_joint_names.json --scale 0.08
-```
-
-`input_joint_names.json` 是输入姿态最后 22 维的真实关节名顺序；工具验证名字集合并重排到参考 XML 的顺序。不能直接假定不同数据源顺序一致。FK 使用 MuJoCo，输出仅为关键点，不证明物理成功。
-
-## 训练接口
-
-配置分离 `architecture`、`objective` 和 `manifest`。四份 JSON 构成 2×2 实验矩阵；更换数据用同一协议的 manifest，更换模型扩展 `models.py`，新生成目标扩展 `methods.py`，同时增加测试和配置校验。没有用任意模块导入或 shell 字符串做隐式分派。
-
-默认单卡 FP32、microbatch=8、梯度累积=4，有效 batch=32；width=128、depth=2、1024 点。默认 10,000 updates 只是未执行的起步预算，不等价于论文训练量。无自动混合精度或 DDP；这些应在需要时单独验证。换 GPU 用环境变量 `CUDA_VISIBLE_DEVICES`，每个作业必须有不同输出目录。
-
-Flow Matching：t=0 为高斯噪声，t=1 为数据，线性路径，回归 `x1-x0`，Euler 采样。Diffusion：1000 步 cosine 噪声日程，epsilon 回归，DDIM eta=0 采样。它不是对 DexLearn 的逐行复现。FM 的一大步 Euler 不等于 FlowMap/MeanFlow。
-
-训练实现包含有限值检查、梯度裁剪、AdamW、梯度累积、固定验证噪声、独立测试划分、原子 checkpoint、best/last、RNG/optimizer 恢复。验证损失只用于同一目标内部选 checkpoint，不能直接比较 FM loss 和 diffusion loss 的数值。
-
-记录 resolved config、manifest 内容/hash、代码 hash/Git 状态、PyTorch/GPU 信息、数据文件大小/mtime、每步 loss/耗时和显存。数据大小/mtime 不是内容完整性证明；正式数据版本和下载校验仍需补齐。恢复拒绝更改配置、manifest 或源码的运行；有意改配置属于新实验。
-
-`train` 只有加 `--execute` 才执行。本轮不提供自动训练队列，也没有运行优化器更新。验收后应先运行小数据过拟合和实际断点恢复，再提交长作业。
-
-## 模型 test：采样与评估
-
-```bash
-python -m dexgrasp_lab sample --checkpoint /absolute/best.pt --manifest /absolute/manifest.json --output /absolute/new_samples --steps 5 --candidates 10 --device cuda:0
-```
-
-默认打印计划；加 `--execute` 才采样。测试 manifest 必须与训练记录一致。输出包含 NPZ、样本元数据、checkpoint/manifest hash、seed 对应配置、NFE 和生成时间。没有 likelihood 排序；全部候选保留。时间包括点云编码，不含 IK 和物理仿真，也未做稳定性能基准的 warmup。
-
-```bash
-python -m dexgrasp_lab test --samples /absolute/new_samples
-python -m dexgrasp_lab ik --samples /absolute/new_samples --output /absolute/new_ik --kpgrasp-root ../reference/KPGrasp
-python -m dexgrasp_lab benchmark-plan --root ../reference/DexGraspBench --python /absolute/eval_env/bin/python --samples /absolute/new_ik --output /absolute/test_results --name trial
-```
-
-IK 仍需 `--execute`，依赖上游 solver 的 MuJoCo/mink/quadprog 等。每份样本必须有有效 scene_path；导出 qpos 为 xyz+wxyz+22 joints。`test`（兼容别名 `metrics`）只给关键点坐标标准差等描述值，物理成功率保持 null。IK 阈值成功不能代替抓取成功。
-
-`benchmark-plan` 仅输出格式转换、MuJoCo 评测、统计三条 argv，不运行上游带清理操作的 shell 脚本。记录 main 分支协议：0.1kg、摩擦 [0.6,0.02]、最大初始穿透 0.01m、位移阈值 0.05m、角度 15°。手部控制参数和 mesh 资产仍须在正式实验清单中固定；baseline 分支与 main 分支结果不可混用。
-
-## 官方与 agent 接口
-
-```bash
-python -m dexgrasp_lab reference-plan --profile kpgrasp_fm --python /absolute/kp_env/bin/python --data-root /absolute/dexonomy --output-root /absolute/kp_runs
-```
-
-支持 kpgrasp_fm、kpgrasp_flowmap、dexlearn_diffusion、dexlearn_nflow、dexgraspnet2_diffusion。输出 cwd、argv、环境变量、来源 SHA、未解决限制。它们是参考复现计划，不是已完成运行验证的统一训练后端；官方各环境、数据和验证集适配仍需验收后按选定路线落实。
-
-后续 agent 可以按 `doctor → prepare → audit → plan → 人工验收 → train --execute → sample → IK → benchmark` 调度。当前只实现监督式静态抓取生成；如果“agent 训练”指 RL，需要另定义环境、observation/action、reward、终止条件与评测协议，本轮不伪造这些未确定接口。
+没有训练标签的新场景可直接调用 `dexgrasp.test.inference.predict(model, raw_condition, candidates=8)`。raw_condition 使用批量米制点云与 h、场景系方向；函数统一归一化并返回米制 `[B,8,21,3]`。模型由 `dexgrasp.train.runner.load_model` 加载。此 API 不要求新场景出现在训练 HDF5 中，几何解码与物理验收仍独立进行。

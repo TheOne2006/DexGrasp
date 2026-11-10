@@ -5,7 +5,7 @@
     "url": "https://github.com/PKU-EPIC/DexGraspNet2.git",
     "role": "Cluttered-scene diffusion, Leap Hand; separate dataset/protocol",
     "scope": "train / test",
-    "usage": "阅读并选择性复用局部几何、扩散与杂乱场景流水线；当前只提供官方启动计划。",
+    "usage": "阅读局部几何、扩散与杂乱场景流水线；不提供自有 baseline 启动入口。",
     "code_entries": [
       "src/utils/dataset.py",
       "src/network/graspness_sample.py",
@@ -26,7 +26,7 @@
     "url": "https://github.com/Yuansen-Huang/KPGrasp.git",
     "role": "Shadow 28-keypoint FM and FlowMap; primary keypoint reference",
     "scope": "data / train / test",
-    "usage": "当前 FK 读取关键点名和手模型，IK 动态调用上游求解器；训练仅参考计划，未导入官方网络。",
+    "usage": "采用源自 MinkowskiEngine 的 MinkUNet14 定义并保留 MIT 许可证；关键点与 SVD/IK 思路作参考，自有协议为 Sharpa 21 点。",
     "code_entries": [
       "docs/DATA.md",
       "src/dexgrasp/dataset/kdex.py",
@@ -50,7 +50,7 @@
     "url": "https://github.com/JYChen18/DexLearn.git",
     "role": "Dexonomy diffusion and normalizing-flow reference",
     "scope": "train",
-    "usage": "阅读并选择性复用条件编码、扩散/NF输出头；当前只提供官方启动计划。",
+    "usage": "保留上游源码与接口索引；自有 v1 不调用旧启动 profile，物理评估需独立适配 Sharpa。",
     "code_entries": [
       "dexlearn/dataset/base_dex.py",
       "dexlearn/network/models/base.py",
@@ -91,7 +91,7 @@
     "url": "https://github.com/JYChen18/DexGraspBench.git",
     "role": "MuJoCo physical evaluation",
     "scope": "test",
-    "usage": "采用 Learning 格式与 MuJoCo 评估协议；当前仅生成 format/eval/stat 命令，不执行仿真。",
+    "usage": "保留上游源码与接口索引；自有 v1 不调用旧启动 profile，物理评估需独立适配 Sharpa。",
     "code_entries": [
       "src/main.py",
       "src/task/convert_format.py",
@@ -105,6 +105,84 @@
       "hydra-core",
       "qpsolvers",
       "mujoco_menagerie"
+    ]
+  },
+  {
+    "name": "CGrasp",
+    "path": "../../reference/CGrasp",
+    "url": "https://github.com/gpaschalidis/CGrasp.git",
+    "role": "Directional MANO hand CVAE",
+    "scope": "train / test",
+    "usage": "方向条件拼接与方向监督参考；仅源码阅读，未接入自有训练。",
+    "code_entries": [
+      "cgrasp/models/models.py",
+      "cgrasp/train/trainer.py",
+      "generate_grasps.py",
+      "train.py"
+    ],
+    "dependencies": [
+      "PyTorch3D",
+      "MANO",
+      "bps_torch"
+    ]
+  },
+  {
+    "name": "CWGrasp",
+    "path": "../../reference/CWGrasp",
+    "url": "https://github.com/gpaschalidis/CWGrasp.git",
+    "role": "Whole-body directional grasp optimization",
+    "scope": "test",
+    "usage": "CGrasp 所属全身抓取框架与优化参考；完整流程另需 CReach、ReachingField 及授权人体资产。",
+    "code_entries": [
+      "README.md",
+      "optimization.py",
+      "cfg/loss_config.yaml"
+    ],
+    "dependencies": [
+      "Kaolin",
+      "MANO",
+      "SMPL-X"
+    ]
+  },
+  {
+    "name": "CAPGrasp",
+    "path": "../../reference/CAPGrasp",
+    "url": "https://github.com/wengzehang/CAPGrasp.git",
+    "role": "Approach-constrained parallel-jaw grasp generation",
+    "scope": "train / test",
+    "usage": "方向标准坐标系、方向锥半角条件与受限 refinement 参考；平行夹爪协议。",
+    "code_entries": [
+      "grasp_sampler_refiner.py",
+      "models/networks.py",
+      "utils/utils.py",
+      "utils/sample_condition.py",
+      "train.py"
+    ],
+    "dependencies": [
+      "pointnet2_ops",
+      "python-fcl",
+      "Open3D"
+    ]
+  },
+  {
+    "name": "TRO-Grasp",
+    "path": "../../reference/TRO-Grasp",
+    "url": "https://github.com/Barrybarry-Smith/TRO-Grasp.git",
+    "role": "Robot-object graph diffusion and palm rotation guidance",
+    "scope": "train / test",
+    "usage": "图扩散与采样时完整掌部旋转引导参考；未运行 IK 或物理评估。",
+    "code_entries": [
+      "model/tro_graph.py",
+      "model/denoiser.py",
+      "config/test_palm_conditioned.yaml",
+      "train.py",
+      "test.py"
+    ],
+    "dependencies": [
+      "PyTorch3D",
+      "JAX",
+      "Pyroki",
+      "Isaac Gym (validation)"
     ]
   }
 ]

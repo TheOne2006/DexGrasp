@@ -2,10 +2,10 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
-data/
-checkpoints/
-outputs/
-reference/
+/data/
+/checkpoints/
+/outputs/
+/reference/
 .env
 .env.*
 !.env.example
@@ -15,3 +15,9 @@ reference/
 *.h5
 *.hdf5
 .DS_Store
+*.egg-info/
+/build/
+/dist/
+/site/node_modules/
+/site/.tools/
+/site/dist/

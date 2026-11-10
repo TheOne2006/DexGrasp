@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "hand_model": "sharpa",
+  "calibrated": false,
+  "root_link": null,
+  "urdf": null,
+  "joint_order": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "reference_length_m": null,
+  "approach_axis": [
+    0,
+    0,
+    1
+  ],
+  "keypoint_map_version": null,
+  "label_version": null,
+  "keypoints": [
+    {
+      "name": "kp00",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp01",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp02",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp03",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp04",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp05",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp06",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp07",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp08",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp09",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp10",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp11",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp12",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp13",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp14",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp15",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp16",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp17",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp18",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp19",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    },
+    {
+      "name": "kp20",
+      "link": null,
+      "local_xyz_m": null,
+      "palm_anchor": null
+    }
+  ],
+  "palm": {
+    "normal": null,
+    "ray_origins_m": []
+  },
+  "calibration_note": "Template only. Populate actual Sharpa joint/link/keypoint/palm geometry before marking calibrated=true."
+}

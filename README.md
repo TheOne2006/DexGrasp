@@ -1,44 +1,73 @@
 # DexGrasp
 
-EPIC 灵巧手抓取姿态生成研究代码。当前提供多架构实验准备框架；数据集、最终模型与研究贡献尚未确定，尚未启动训练。
+EPIC 的场景条件灵巧手抓姿生成框架，按个人模型设计 v1 实现。当前只包含自有 Sharpa 21 点模型：**Flow Matching 教师 + FlowMap 轨迹蒸馏学生**。
 
-本目录是自有 Git/GitHub 代码仓库；上级目录是研究工作区。参考代码放在上级 `reference/`，按需要使用，见 [项目结构](docs/project-structure.md) 和 [参考代码使用说明](docs/reference-code.md)。项目背景与论文阅读资料留在外层工作区。
+输入目标点云、包含目标/环境/桌面的场景点云、目标标记、连续 `palm_gap` 和必需的接近方向；输出整手关键点，再经掌部 SVD 与有界手指 IK 恢复 `R,t,q[22]`。旧 Shadow 三阶段基线、Diffusion 模型及其入口已移除。
 
-数据、权重与运行结果使用上级目录的 `data/`、`checkpoints/`、`outputs/`，不提交大文件。实验前记录代码版本、配置、数据划分和评价协议，区分关键点/IK 拟合成功与物理抓取成功。
+## 文件夹职责
 
-## 三部分
-
-- data：`dexgrasp_lab/data.py`、`prepare.py`，统一 manifest、物体级划分、NPZ/HDF5 读取和显式关节顺序 FK。
-- train：`models.py`、`methods.py`、`train.py`，PointNet+MLP / PointNet+Transformer × Diffusion / Flow Matching，单卡梯度累积、检查点和恢复。
-- test：`test.py`，采样、描述性指标、KPGrasp IK 和 DexGraspBench 命令规划。软件测试独立放在 `tests/`。
-
-这些是自有受控基线，不是 KPGrasp、DexLearn 或 DexGraspNet2 的论文复现。训练只需 PyTorch、NumPy、h5py；不依赖 Isaac Lab。FK/IK/物理评测分开配置环境。
-
-## 先检查，再验收
-
-在本目录使用自己的训练 Python 环境运行：
-
-```bash
-python -m dexgrasp_lab doctor
-python -m dexgrasp_lab list-models
-python -m dexgrasp_lab plan --config configs/pointnet_mlp_flow_matching.json
-python -m dexgrasp_lab train --config configs/pointnet_mlp_flow_matching.json
+```text
+DexGrasp/                         自有 Git 仓库
+├── dexgrasp/
+│   ├── data/                     Data v1：表面采样、HDF5、划分与数据审计
+│   ├── models/                   两路 MinkUNet + 条件 Transformer + FM/FlowMap 输出
+│   ├── geometry/                 手模型标定接口、FK/Jacobian、掌面测量、SVD/IK
+│   ├── train/                    FM/蒸馏目标、训练、验证、检查点和断点恢复
+│   ├── test/                     生成、几何解码、条件误差和外部物理结果汇总
+│   └── vendor/                   保留许可证的 MinkUNet 稀疏网络定义
+├── configs/                      FM、FlowMap、未标定手模型模板、参考代码索引
+├── tests/                        软件测试；合成夹具不用于研究结论
+├── scripts/                      参考代码检查和软件性能检查
+├── docs/                         数据、模型、运行和验证说明
+├── licenses/                     第三方许可证
+└── .github/                      CI
 ```
 
-最后一条**默认仍只打印计划**。缺少数据时返回 JSON `blocked` 和退出码 2。只有显式添加 `--execute` 才进入训练，本轮没有执行。
+实际数据、权重和结果仍分别放在外层 `../data/`、`../checkpoints/`、`../outputs/`；参考源码留在 `../reference/`。详见 [项目结构](docs/project-structure.md)。
 
-配置路径相对于配置文件，manifest 内的数据路径相对于 manifest。训练记录和权重分别写到项目上级的 `outputs/`、`checkpoints/`；拒绝覆盖已有非空运行目录。恢复使用同一配置与 `--resume /absolute/path/last.pt`，并核对 manifest 和代码 SHA256。
+## 运行
 
-详见 [数据格式与命令](docs/interfaces.md)、[项目结构与 GitHub 设置](docs/project-structure.md)、[参考代码索引](configs/references.json)。准备报告位于外层工作区的 `docs/`，不随本代码仓库上传。
+使用包含 PyTorch、NumPy、h5py、SciPy 的项目环境。真实几何编码还需要与 PyTorch/CUDA 匹配的 **MinkowskiEngine**；缺失时明确报错，不替换成其他模型。当前本机隔离环境与构建方法见 [环境说明](docs/environment.md)。OBJ/STL/PLY 导入额外需要 `trimesh`；NPZ 三角网格不需要它。
 
-模型 test 入口：`python -m dexgrasp_lab test --samples /absolute/samples`。数据划分保持 `train / val / test`。
+```bash
+# 在内层仓库中执行；先检查真实数据、手模型标定与依赖。
+python -m dexgrasp plan --config configs/fm.json
+python -m dexgrasp plan --config configs/flowmap.json
 
-## 代码检查
+# 读取已准备好的原始 assets、scenes、hand 并生成 HDF5 与 splits。
+python -m dexgrasp prepare-data --root ../data/dataset_v1
+python -m dexgrasp audit-data --root ../data/dataset_v1
 
-FK 检查使用 KPGrasp 的手模型；新机器先运行 `python scripts/setup_references.py --clone KPGrasp`。其余四个 reference 不必为软件检查全部下载。
+# 不带 --execute 只显示计划。FM 完成后再使用其检查点训练 FlowMap。
+python -m dexgrasp train --config configs/fm.json --execute
+python -m dexgrasp train --config configs/flowmap.json --execute
+
+python -m dexgrasp sample --checkpoint ../checkpoints/v1/flowmap/best.pt \
+  --dataset-root ../data/dataset_v1 --output ../outputs/v1/flowmap_samples.h5 \
+  --steps 1 --device cuda:0
+python -m dexgrasp decode --samples ../outputs/v1/flowmap_samples.h5 \
+  --output ../outputs/v1/decoded.jsonl
+python -m dexgrasp test --decoded ../outputs/v1/decoded.jsonl
+```
+
+配置内路径相对于配置文件，URDF 路径相对于 `hand_spec.json`。恢复使用同一配置加 `--resume /absolute/path/last.pt`。运行前写入源码、配置、划分、手模型和教师指纹；拒绝覆盖已有运行目录。
+
+## 当前边界
+
+- `configs/hand_spec.template.json` 是未标定模板。实际 Sharpa URDF、22 个关节顺序、21 个关键点 link/局部坐标、刚性掌部锚点、掌面射线区域和固定参考长度需要真实数值。
+- 当前 Data v1 采用你最新指定的**完整 mesh 表面积均匀采样**；不是可见表面的单视角渲染协议。相机信息保留在场景 JSON，不参与本版采样。
+- FlowMap 使用训练 split 条件下冻结 FM 的真实 ODE 轨迹，默认 Heun32，并混入完整 `(0,1)` 区间；学生有独立参数。
+- 碰撞与抓稳结果由外部评估器提供。没有外部结果时物理成功率返回 `null`，不会把 IK 成功当作物理成功。参见 [接口](docs/interfaces.md)。
+- 已增加完整模型的小数据过拟合实验，使用官方 Sharpa URDF 和明确标注的合成几何诊断标签。初始化、冻结策略、checkpoint 与实验边界见 [过拟合实验](docs/overfit-v1.md)。这不属于真实成功抓取数据训练。
+
+## 验证
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES='' python -m unittest discover -s tests -v
 ```
 
-测试包括模拟中断/恢复；该测试禁用了 `optimizer.step`，不更新模型权重。测试依赖 MuJoCo 以验证 FK。测试夹具均为临时合成数据，不能作为抓取实验结果。
+训练循环软件测试禁用 `optimizer.step`。MinkowskiEngine 不可用时，仅真实稀疏网络测试跳过；其他模型测试使用限定在 `tests/` 的编码器替身。本机已通过 40 项测试及完整模型 CUDA 检查，范围见 [验证说明](docs/validation.md) 与 [过拟合实验](docs/overfit-v1.md)，模型与优化细节见 [模型 v1](docs/model-v1.md)。
+
+### Sharpa 1000 条数据与实验展示
+
+基于现有 Dexonomy 物体与 Shadow 抓姿做 Sharpa 显式重定向，保持 22 DOF 与 21 个诊断关键点。数据来源、尺度、筛选、划分和训练方案见 [实验说明](docs/sharpa-1k.md)。[Tailscale 数据浏览网站](http://100.91.234.79:8766) 展示真实 mesh、重定向骨架、检查结果与训练日志。运动学 / 几何检查通过不代表物理抓取成功。

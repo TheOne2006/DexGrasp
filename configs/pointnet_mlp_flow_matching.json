@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "architecture": "pointnet_mlp",
-  "objective": "flow_matching",
-  "manifest": "../../data/manifests/dexonomy_kp.json",
-  "run_dir": "../../outputs/native/pointnet_mlp_flow_matching_s0",
-  "checkpoint_dir": "../../checkpoints/native/pointnet_mlp_flow_matching_s0",
-  "sample_steps": 5
-}

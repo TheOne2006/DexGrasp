@@ -99,3 +99,12 @@ CLI 默认间距容差 5 mm、方向容差 10°、IK 重建容差 3 mm 只是工
 `sample --palm-gap-m 0.02 --direction 0 0 1` 只覆盖推理条件，不修改训练标签。固定 `--seed` 和场景、方向，改变间距可做连续控制扫描；固定条件改变 seed 可看候选多样性。样本文件记录实际使用的 h/d 与覆盖参数。
 
 没有训练标签的新场景可直接调用 `dexgrasp.test.inference.predict(model, raw_condition, candidates=8)`。raw_condition 使用批量米制点云与 h、场景系方向；函数统一归一化并返回米制 `[B,8,21,3]`。模型由 `dexgrasp.train.runner.load_model` 加载。此 API 不要求新场景出现在训练 HDF5 中，几何解码与物理验收仍独立进行。
+
+## 独立物理评估扩展
+
+`test-physics --decoded decoded.jsonl --report physics.json` 接收新的
+`dexgrasp-physics-result/v1` 报告，检查 decoded SHA256 与候选身份，保留异常/未测。
+不要求将未知碰撞结果伪造为布尔值。旧 `test --verdicts` 严格接口保持不变。
+完整世界/手根变换、关节名和控制轨迹合同见
+[generation-evaluation](generation-evaluation.md)。上文 Data v1 的射线 h 和场景点云
+不是单物体 h32 训练包协议，两者不得混用。

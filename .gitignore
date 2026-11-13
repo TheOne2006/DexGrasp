@@ -21,3 +21,6 @@ __pycache__/
 /site/node_modules/
 /site/.tools/
 /site/dist/
+
+.venv-*/
+/docs/agent-context/

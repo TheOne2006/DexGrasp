@@ -1,0 +1,336 @@
+{
+  "source_sha": "114985ad1c588026c0e426166df3aad0a2e6d0ee",
+  "method": "Execute only original config AST with recording compose callbacks, no runtime imports",
+  "cases": [
+    {
+      "config": {
+        "asset_root": "fixture-assets",
+        "refine_batch": 640,
+        "refine_min_execution_slots": 32,
+        "refine_small_batch_limit": 32,
+        "refine_small_batch_capacity": 32,
+        "object_batch": 10,
+        "sample_points": 1024
+      },
+      "tabletop": false,
+      "expected": {
+        "refine_cfg": {
+          "overrides": [
+            "grasp",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 1}",
+            "obj_mass=0.1",
+            "grasp-overrides",
+            "+refine_qp_backend=cpu",
+            "+refine_ccd_multiplier=1",
+            "+refine_min_execution_slots=32",
+            "+refine_small_batch_limit=32",
+            "+refine_small_batch_capacity=32"
+          ],
+          "refine_njmax": 0,
+          "refine_cpu_qp_workers": 0,
+          "refine_cpu_qp_executor": "thread"
+        },
+        "eval_cfg": {
+          "overrides": [
+            "eval",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 1}",
+            "obj_mass=0.1",
+            "physics_profile=native",
+            "op.reuse_fc_preamble=false",
+            "+warp_device=cuda:0",
+            "+terminal_stability=True",
+            "op.noslip_iterations=0"
+          ],
+          "eval_njmax": 0
+        },
+        "base_init": [
+          "init",
+          "vnext",
+          "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 1}",
+          "obj_mass=0.1",
+          "init_gpu=[0]",
+          "op.epoch=1",
+          "op.object.batch_size=10",
+          "op.object.n_cfg=0",
+          "op.object.n_init_point=1024",
+          "op.object.n_init_inplane=8",
+          "op.matcher.opt_step=100",
+          "+op.filter.general.strict=true"
+        ],
+        "seed_cfg": {
+          "overrides": [
+            "init",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 1}",
+            "obj_mass=0.1",
+            "init_gpu=[0]",
+            "op.epoch=1",
+            "op.object.batch_size=10",
+            "op.object.n_cfg=0",
+            "op.object.n_init_point=1024",
+            "op.object.n_init_inplane=8",
+            "op.matcher.opt_step=100",
+            "+op.filter.general.strict=true"
+          ]
+        }
+      }
+    },
+    {
+      "config": {
+        "asset_root": "fixture-assets",
+        "refine_batch": 640,
+        "refine_min_execution_slots": 32,
+        "refine_small_batch_limit": 32,
+        "refine_small_batch_capacity": 32,
+        "object_batch": 10,
+        "sample_points": 1024,
+        "loader_workers": 3,
+        "refine_ccd_multiplier": 2,
+        "refine_njmax": 8192,
+        "refine_cpu_qp_workers": "2",
+        "refine_cpu_qp_executor": "process",
+        "eval_njmax": 16384,
+        "tabletop_trace": true,
+        "tabletop_trace_candidates": [
+          "a"
+        ],
+        "inplane": 4
+      },
+      "tabletop": false,
+      "expected": {
+        "refine_cfg": {
+          "overrides": [
+            "grasp",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 3}",
+            "obj_mass=0.1",
+            "grasp-overrides",
+            "+refine_qp_backend=cpu",
+            "+refine_ccd_multiplier=2",
+            "+refine_min_execution_slots=32",
+            "+refine_small_batch_limit=32",
+            "+refine_small_batch_capacity=32"
+          ],
+          "refine_njmax": 8192,
+          "refine_cpu_qp_workers": 2,
+          "refine_cpu_qp_executor": "process"
+        },
+        "eval_cfg": {
+          "overrides": [
+            "eval",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 3}",
+            "obj_mass=0.1",
+            "physics_profile=native",
+            "op.reuse_fc_preamble=false",
+            "+warp_device=cuda:0",
+            "+terminal_stability=True",
+            "op.noslip_iterations=0"
+          ],
+          "eval_njmax": 16384
+        },
+        "base_init": [
+          "init",
+          "vnext",
+          "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 3}",
+          "obj_mass=0.1",
+          "init_gpu=[0]",
+          "op.epoch=1",
+          "op.object.batch_size=10",
+          "op.object.n_cfg=0",
+          "op.object.n_init_point=1024",
+          "op.object.n_init_inplane=4",
+          "op.matcher.opt_step=100",
+          "+op.filter.general.strict=true"
+        ],
+        "seed_cfg": {
+          "overrides": [
+            "init",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 3}",
+            "obj_mass=0.1",
+            "init_gpu=[0]",
+            "op.epoch=1",
+            "op.object.batch_size=10",
+            "op.object.n_cfg=0",
+            "op.object.n_init_point=1024",
+            "op.object.n_init_inplane=4",
+            "op.matcher.opt_step=100",
+            "+op.filter.general.strict=true"
+          ]
+        }
+      }
+    },
+    {
+      "config": {
+        "asset_root": "fixture-assets",
+        "refine_batch": 640,
+        "refine_min_execution_slots": 32,
+        "refine_small_batch_limit": 32,
+        "refine_small_batch_capacity": 32,
+        "object_batch": 10,
+        "sample_points": 1024
+      },
+      "tabletop": true,
+      "expected": {
+        "refine_cfg": {
+          "overrides": [
+            "grasp",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 1}",
+            "obj_mass=0.1",
+            "grasp-overrides",
+            "+refine_qp_backend=cpu",
+            "+refine_ccd_multiplier=1",
+            "+refine_min_execution_slots=32",
+            "+refine_small_batch_limit=32",
+            "+refine_small_batch_capacity=32"
+          ],
+          "refine_njmax": 0,
+          "refine_cpu_qp_workers": 0,
+          "refine_cpu_qp_executor": "thread"
+        },
+        "eval_cfg": {
+          "overrides": [
+            "eval",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 1}",
+            "obj_mass=0.1",
+            "physics_profile=native",
+            "op.reuse_fc_preamble=false",
+            "+warp_device=cuda:0",
+            "+terminal_stability=True",
+            "op.noslip_iterations=0"
+          ],
+          "eval_njmax": 0,
+          "tabletop_output": "fixture-checkpoint/tabletop",
+          "tabletop_trace": false,
+          "tabletop_trace_candidates": []
+        },
+        "base_init": [
+          "init",
+          "vnext",
+          "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 1}",
+          "obj_mass=0.1",
+          "init_gpu=[0]",
+          "op.epoch=1",
+          "op.object.batch_size=10",
+          "op.object.n_cfg=0",
+          "op.object.n_init_point=1024",
+          "op.object.n_init_inplane=8",
+          "op.matcher.opt_step=100",
+          "+op.filter.general.strict=true"
+        ],
+        "seed_cfg": {
+          "overrides": [
+            "init",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 1}",
+            "obj_mass=0.1",
+            "init_gpu=[0]",
+            "op.epoch=1",
+            "op.object.batch_size=10",
+            "op.object.n_cfg=0",
+            "op.object.n_init_point=1024",
+            "op.object.n_init_inplane=8",
+            "op.matcher.opt_step=100",
+            "+op.filter.general.strict=true"
+          ]
+        }
+      }
+    },
+    {
+      "config": {
+        "asset_root": "fixture-assets",
+        "refine_batch": 640,
+        "refine_min_execution_slots": 32,
+        "refine_small_batch_limit": 32,
+        "refine_small_batch_capacity": 32,
+        "object_batch": 10,
+        "sample_points": 1024,
+        "loader_workers": 3,
+        "refine_ccd_multiplier": 2,
+        "refine_njmax": 8192,
+        "refine_cpu_qp_workers": "2",
+        "refine_cpu_qp_executor": "process",
+        "eval_njmax": 16384,
+        "tabletop_trace": true,
+        "tabletop_trace_candidates": [
+          "a"
+        ],
+        "inplane": 4
+      },
+      "tabletop": true,
+      "expected": {
+        "refine_cfg": {
+          "overrides": [
+            "grasp",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 3}",
+            "obj_mass=0.1",
+            "grasp-overrides",
+            "+refine_qp_backend=cpu",
+            "+refine_ccd_multiplier=2",
+            "+refine_min_execution_slots=32",
+            "+refine_small_batch_limit=32",
+            "+refine_small_batch_capacity=32"
+          ],
+          "refine_njmax": 8192,
+          "refine_cpu_qp_workers": 2,
+          "refine_cpu_qp_executor": "process"
+        },
+        "eval_cfg": {
+          "overrides": [
+            "eval",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 3}",
+            "obj_mass=0.1",
+            "physics_profile=native",
+            "op.reuse_fc_preamble=false",
+            "+warp_device=cuda:0",
+            "+terminal_stability=True",
+            "op.noslip_iterations=0"
+          ],
+          "eval_njmax": 16384,
+          "tabletop_output": "fixture-checkpoint/tabletop",
+          "tabletop_trace": true,
+          "tabletop_trace_candidates": [
+            "a"
+          ]
+        },
+        "base_init": [
+          "init",
+          "vnext",
+          "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 3}",
+          "obj_mass=0.1",
+          "init_gpu=[0]",
+          "op.epoch=1",
+          "op.object.batch_size=10",
+          "op.object.n_cfg=0",
+          "op.object.n_init_point=1024",
+          "op.object.n_init_inplane=4",
+          "op.matcher.opt_step=100",
+          "+op.filter.general.strict=true"
+        ],
+        "seed_cfg": {
+          "overrides": [
+            "init",
+            "vnext",
+            "{\"asset_root\": \"fixture-assets\", \"hand\": \"sharpa_v2\", \"pregrasp_cdist\": 0.045, \"pregrasp_ho_thre\": 0.04, \"save_root\": \"fixture-checkpoint\", \"warp_device\": \"cuda:0\", \"warp_world_batch_size\": 640, \"workers\": 3}",
+            "obj_mass=0.1",
+            "init_gpu=[0]",
+            "op.epoch=1",
+            "op.object.batch_size=10",
+            "op.object.n_cfg=0",
+            "op.object.n_init_point=1024",
+            "op.object.n_init_inplane=4",
+            "op.matcher.opt_step=100",
+            "+op.filter.general.strict=true"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+skip_pregrasp: False  # start from grasp pose rather than pre grasp pose for testing
+miu_coef: [0.6, 0.02]  # tangential and torsional friction coefficient
+hard: False # True scales miu[0]*=0.5 and miu[1]*=0.1; retains configured noslip and impratio=10
+noslip_iterations: 2  # historical default; use 0 only for explicit no-noslip comparisons
+reuse_fc_preamble: False  # replay pre-grasp/grasp/squeeze independently for every force direction
+trans_thre: 0.05  # success threshold, unit: m
+rot_thre: 15  # success threshold, unit: degree
+
+cust_log_dir: ${log_dir}

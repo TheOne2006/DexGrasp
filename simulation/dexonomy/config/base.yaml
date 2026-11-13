@@ -1,0 +1,64 @@
+# General configurations
+n_worker: 1
+skip_done: True   # skip if the result already exists, used for op=init, grasp and eval
+
+legacy_api: False
+
+# Reproduce upstream's pinned MuJoCo 3.3.3 options and compiler/forward behavior.
+# `native` retains the installed engine's defaults for version-change diagnostics.
+physics_profile: upstream_mujoco333
+
+# GPU configurations
+init_gpu: [0]
+
+# Debug configurations
+debug_view: False  # requiring a GUI
+debug_render: False  # support headless rendering
+debug_name: ""
+
+# Template configurations
+tmpl_name: null  # support multiple templates, e.g. [t1, t2, ...]
+tmpl_upd_mode: hybrid   # Choices: orig, real, hybrid, disabled
+tmpl_max_evo: 2  # max evolution number for restricting template update
+tmpl_max_buf: 1024  # max buffer size for template library
+
+# Object configurations
+obj_mass: 0.1 # unit: kg
+
+# Path configurations
+exp_name: debug
+asset_root: assets
+save_root: output
+save_dir: ${save_root}/${exp_name}_${hand_name}
+
+# Path for hand annotation
+raw_anno_dir: ${asset_root}/hand/${hand_name}/raw_anno
+init_tmpl_dir: ${asset_root}/hand/${hand_name}/init_tmpl
+hand_skt_path: ${asset_root}/hand/${hand_name}/skeleton.yaml
+hand_kp_path: ${asset_root}/hand/${hand_name}/keypoint.yaml
+hand_bgroup_path: ${asset_root}/hand/${hand_name}/body_group.yaml
+
+# Path for saving results
+init_dir: ${save_dir}/init_data
+grasp_dir: ${save_dir}/grasp_data
+succ_grasp_dir: ${save_dir}/succ_grasp
+eval_report_dir: ${save_dir}/evaluation
+new_tmpl_dir: ${save_dir}/new_tmpl
+debug_dir: ${save_dir}/debug
+
+# Path for logs
+log_id: 0     # Allow parallelize ops
+log_dir: ${save_dir}/log/${op_name}_${log_id}
+log_path: ${log_dir}/path_log.txt
+
+defaults:
+  - _self_
+  - op: init
+  - hand: sharpa_v2
+
+op_name: ${hydra:runtime.choices.op}
+hand_name: ${hydra:runtime.choices.hand}
+
+hydra:
+  run:
+    dir: ${op.cust_log_dir}

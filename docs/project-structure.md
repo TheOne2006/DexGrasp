@@ -24,3 +24,9 @@ Python 包统一为 `dexgrasp`，命令入口 `python -m dexgrasp`。旧 `dexgra
 配置中的 `../../data` 路径以 `configs/*.json` 所在目录为基准。正式运行先冻结代码、配置、划分和评价协议，记录实际使用的手模型/教师指纹。
 
 Git 操作只在内层执行。保留原有 `origin` 配置及仓库可见性；本次不提交、不推送。参考源码不作为本仓库 submodule，不要求同时安装或运行所有参考项目。参考目录导航由 `configs/references.json` 和 `scripts/setup_references.py` 维护，具体采用模块见 `THIRD_PARTY_NOTICES.md`。
+
+`simulation/` 为本仓库维护的独立 Dexonomy 运行时，保留 `dexonomy` 命名空间与
+独立 pyproject，避免仿真 NumPy 2 依赖进入训练环境。`dexgrasp/test/physics_input.py`
+导出显式控制请求，`physics_report.py` 校验并汇总物理结果；详见
+[generation-evaluation](generation-evaluation.md)。上文旧“不提交、不推送”是结构
+重建时的历史边界，具体任务按当前用户授权执行。

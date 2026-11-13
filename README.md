@@ -71,3 +71,10 @@ PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES='' python -m unittest discover -s
 ### Sharpa 1000 条数据与实验展示
 
 基于现有 Dexonomy 物体与 Shadow 抓姿做 Sharpa 显式重定向，保持 22 DOF 与 21 个诊断关键点。数据来源、尺度、筛选、划分和训练方案见 [实验说明](docs/sharpa-1k.md)。[Tailscale 数据浏览网站](http://100.91.234.79:8766) 展示真实 mesh、重定向骨架、检查结果与训练日志。运动学 / 几何检查通过不代表物理抓取成功。
+
+## 预测物理评估与数据生成
+
+新增独立仿真环境和可直接调用的 Sharpa 评估入口，支持 Floating 六向与
+Tabletop Slide 后六向协议，以及有界单卡 Init → Refine → Eval / 恢复。
+参见 [接口、安装与验证边界](docs/generation-evaluation.md)。
+模型 checkpoint 必须匹配训练源码；IK 拟合成功不等于物理抓取成功。

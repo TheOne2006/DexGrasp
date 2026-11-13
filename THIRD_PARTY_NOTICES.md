@@ -36,3 +36,13 @@ headers. The patch is applied only to the project-local dependency checkout.
 The Shadow kinematics input is `assets/hand/shadow/right.xml` from [Dexonomy](https://github.com/JYChen18/Dexonomy), commit `d561ff9df8545deef7a3f9e7cfb4045ef66f6913`, based on the Apache-2.0 MuJoCo Menagerie Shadow model. The copied dataset asset retains the Shadow Apache-2.0 notice. The adapter is original project code and strips geometry for kinematics only. Sharpa asset attribution remains as documented above.
 
 The explorer bundles a subset of Noto Sans SC, Copyright The Noto Project Authors, under the SIL Open Font License 1.1; license at `site/public/fonts/OFL.txt`. React, Vite, Three.js and Playwright retain their package licenses in their respective dependency distributions.
+
+## Optional Dexonomy simulation runtime
+
+`simulation/` is separately installed and derived from Dexonomy (Jiayi Chen,
+Yubin Ke, Lin Peng and He Wang), upstream d561ff9 and integration 9c220bd.
+See `simulation/NOTICE.md`, `simulation/SOURCES.json`, and the complete
+`simulation/licenses/CC-BY-NC-4.0.txt`. The noncommercial upstream terms are
+retained. `simulation/dexonomy/util/torch_util.py` also derives from PyTorch3D;
+its BSD license is in `simulation/licenses/PyTorch3D-BSD.txt`.
+Hand models, annotations, templates and object assets are not redistributed.

@@ -42,6 +42,9 @@ def main(argv=None):
     evaluate.add_argument('--verdicts')
     evaluate.add_argument('--gap-tolerance-m', type=float, default=0.005)
     evaluate.add_argument('--direction-tolerance-deg', type=float, default=10.)
+    physical = sub.add_parser('test-physics')
+    physical.add_argument('--decoded', required=True)
+    physical.add_argument('--report', required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == 'prepare-data':
@@ -67,6 +70,9 @@ def main(argv=None):
         elif args.command == 'decode':
             from .test.pipeline import decode_file
             result = decode_file(args.samples, args.output, tolerance_m=args.tolerance_m, max_nfev=args.max_nfev)
+        elif args.command == 'test-physics':
+            from .test.physics_report import summarize
+            result = summarize(args.decoded, args.report)
         else:
             from .test.pipeline import evaluate
             result = evaluate(args.decoded, verdicts=args.verdicts, gap_tolerance_m=args.gap_tolerance_m,

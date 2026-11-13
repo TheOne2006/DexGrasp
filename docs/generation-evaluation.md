@@ -115,3 +115,5 @@ GPU 预测也使用 `simulation/scripts/grouped_production/run.py`：配置 work
 `prediction_worker.py`、prediction_request 为请求路径，外加上述资源/超时/三锁字段；
 省略生产 checkpoint_schema。结果保存在该 attempt 的 `data/physics.json`。
 直接 `--backend warp` 是底层 API，调用者仍须先通过相同的外层资源 guard。
+
+验证范围与实测结果见 [bounded validation](generation-evaluation-validation.md)。

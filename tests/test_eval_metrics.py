@@ -104,7 +104,7 @@ class EvaluationMetricsTests(unittest.TestCase):
                 protocol = dict(selection=str(selection), selection_sha256=sha256(selection),
                                 data_identity={}, seed=1, candidates=8, sampling_steps=20, sampler='Euler',
                                 precision='BF16', ik={}, direction_definition={}, optimizer_steps=40000,
-                                model_variant='object_only_h_less')
+                                model_variant='object_only_h_less', checkpoint=str(folder/'step_040000.pt'))
                 write_json(folder/'protocol.json',protocol)
                 summary = dict(protocol_sha256=sha256(folder/'protocol.json'), candidates=16, objects=2,
                                macro={k:dict(mean=0.) for k in keys},

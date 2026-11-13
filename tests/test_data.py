@@ -1,4 +1,6 @@
 import json
+import shutil
+from copy import deepcopy
 from pathlib import Path
 import pickle
 import tempfile
@@ -7,17 +9,68 @@ import h5py
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from dexgrasp.data.dataset import GraspDataset, audit_dataset, read_split
+from dexgrasp.data.dataset import GraspDataset, audit_dataset, read_split, checkpoint_identity_matches, sha256
 from dexgrasp.data.prepare import prepare_dataset
 from helpers import dataset_fixture
 
 
 class DataTests(unittest.TestCase):
+    def test_deep_audit_receipt_rechecks_contents_and_splits(self):
+        from dexgrasp.data.audit_receipt import create_receipt, verified_identity
+        receipt = create_receipt(self.root)
+        path = self.root/'audit.json'
+        path.write_text(json.dumps(receipt))
+        self.assertEqual(verified_identity(self.root, .2, path), receipt['identity'])
+        with self.assertRaisesRegex(ValueError, 'scale'):
+            verified_identity(self.root, .3, path)
+        split = self.root/'splits/train.jsonl'
+        split.write_text(split.read_text()+'\n')
+        with self.assertRaisesRegex(ValueError, 'split changed'):
+            verified_identity(self.root, .2, path)
+
+    def test_batched_training_reads_match_public_dataset_with_repeats(self):
+        for keys in (None, ('object_points', 'grasp_direction_cmd')):
+            normal = GraspDataset(self.root, 'train', .2, condition_keys=keys)
+            fast = GraspDataset(self.root, 'train', .2, condition_keys=keys, training_only=True)
+            try:
+                indices = [1, 0, 1]
+                actual = fast.__getitems__(indices)
+                for index, batch in zip(indices, actual):
+                    expected = normal[index]
+                    self.assertEqual(set(expected['condition']), set(batch['condition']))
+                    for key in batch['condition']:
+                        torch.testing.assert_close(batch['condition'][key], expected['condition'][key], rtol=0, atol=0)
+                    torch.testing.assert_close(batch['keypoints_gt'], expected['keypoints_gt'], rtol=0, atol=0)
+                restored = pickle.loads(pickle.dumps(fast))
+                self.assertEqual(list(restored.rows), list(normal.rows))
+            finally:
+                normal.close(); fast.close()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)/'dataset'
         dataset_fixture(self.root)
+
+    def test_legacy_split_migration_preserves_identity_and_rejects_changes(self):
+        archive = self.root/'split_history/three_way_v1'
+        archive.mkdir(parents=True)
+        shutil.copy2(self.root/'splits/train.jsonl', archive/'train.jsonl')
+        rows = (self.root/'splits/test.jsonl').read_text().splitlines(keepends=True)
+        (archive/'val.jsonl').write_text(rows[0])
+        (archive/'test.jsonl').write_text(rows[1])
+        current = audit_dataset(self.root)
+        old = deepcopy(current)
+        old['samples'] = {'train': 2, 'val': 1, 'test': 1}
+        old['split_sha256'] = {s: sha256(archive/f'{s}.jsonl') for s in old['samples']}
+        self.assertTrue(checkpoint_identity_matches(old, current, self.root))
+        bad = deepcopy(current)
+        bad['hand_spec_sha256'] = 'changed'
+        self.assertFalse(checkpoint_identity_matches(old, bad, self.root))
+        (self.root/'splits/test.jsonl').write_text(rows[0])
+        self.assertFalse(checkpoint_identity_matches(old, current, self.root))
+        with self.assertRaisesRegex(ValueError, 'train or test'):
+            read_split(self.root, 'val')
 
     def test_roundtrip_and_common_normalization_with_shared_observation(self):
         ds = GraspDataset(self.root, 'train', .2)
@@ -33,7 +86,7 @@ class DataTests(unittest.TestCase):
         center = first['metadata']['center_m']
         torch.testing.assert_close(first['condition']['scene_points']*.2+center, torch.from_numpy(obs['scene_points']))
         torch.testing.assert_close(first['keypoints_gt']*.2+center, torch.from_numpy(grasp['K']), atol=1e-8, rtol=1e-5)
-        self.assertEqual(audit_dataset(self.root)['samples'], {'train': 2, 'val': 2, 'test': 2})
+        self.assertEqual(audit_dataset(self.root)['samples'], {'train': 2, 'test': 2})
 
     def test_lazy_handles_are_worker_local_and_pickle_safe(self):
         ds = GraspDataset(self.root, 'train', .2)
@@ -99,7 +152,7 @@ class DataTests(unittest.TestCase):
         dataset_fixture(root, raw=True)
         result = prepare_dataset(root, grasps_per_shard=1)
         self.assertEqual(result['rejected'], 0)
-        self.assertEqual(len(list((root/'shards').glob('*.h5'))), 6)
+        self.assertEqual(len(list((root/'shards').glob('*.h5'))), 4)
         self.assertEqual(audit_dataset(root)['samples']['train'], 2)
         ds = GraspDataset(root, 'train', .2, max_open_shards=1, observation_cache_size=1)
         self.addCleanup(ds.close)

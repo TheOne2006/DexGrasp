@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import numpy as np
+from .direction import direction_definition
 
 
 def vector(value, size=3):
@@ -36,6 +37,7 @@ def read_hand_spec(path, *, require_calibrated=True):
         raise ValueError('calibrated reference_length_m required')
     if not np.array_equal(vector(spec['approach_axis']), [0., 0., 1.]):
         raise ValueError('Data v1 uses local +z as approach axis')
+    direction_definition(spec)
     joints, points = spec['joint_order'], spec['keypoints']
     if len(joints) != 22 or len(set(joints)) != 22 or not all(isinstance(j, str) and j for j in joints):
         raise ValueError('22 unique ordered joint names required')

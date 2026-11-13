@@ -6,7 +6,7 @@ import h5py
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from ..data.dataset import GraspDataset, audit_dataset, sha256, text
+from ..data.dataset import GraspDataset, audit_dataset, sha256, text, checkpoint_identity_matches
 from ..data.prepare import scene_meshes
 from ..geometry.hand import URDFHand
 from ..geometry.decode import decode_keypoints
@@ -27,7 +27,7 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
     identity = audit_dataset(dataset_root, model.cfg.coord_scale_m, deep=True)
     hand = URDFHand(Path(dataset_root)/'hand/hand_spec.json')
     identity['hand_urdf_sha256'] = sha256(hand.urdf_path)
-    if identity != state['data_identity']:
+    if not checkpoint_identity_matches(state['data_identity'], identity, dataset_root):
         raise ValueError('checkpoint and dataset identity differ')
     steps = (10 if model.method == 'fm' else 1) if steps is None else steps
     if batch_size < 1 or candidates < 1 or steps < 1:
@@ -52,6 +52,7 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
         with h5py.File(temporary, 'x') as f:
             count = len(dataset)
             f.attrs.update(schema='dexgrasp-samples-v1', method=model.method, split=split,
+                           model_variant=model.cfg.variant, palm_gap_conditioned=model.cfg.use_gap,
                            checkpoint_sha256=sha256(checkpoint), dataset_root=str(Path(dataset_root).resolve()),
                            hand_spec_sha256=state['hand_spec_sha256'], hand_urdf_sha256=identity['hand_urdf_sha256'],
                            steps=steps, candidates=candidates, seed=seed,
@@ -68,7 +69,8 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
                     raw['condition']['palm_gap'] = torch.full_like(raw['condition']['palm_gap'], palm_gap_m)
                 if direction is not None:
                     raw['condition']['grasp_direction_cmd'] = torch.from_numpy(direction).expand(len(raw['keypoints_gt']), -1)
-                batch = move_batch(raw, device)
+                model_batch = {**raw, 'condition': {k: raw['condition'][k] for k in model.cfg.condition_keys}}
+                batch = move_batch(model_batch, device)
                 if device.type == 'cuda':
                     torch.cuda.synchronize(device)
                 started = time.perf_counter()
@@ -92,7 +94,8 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
         raise
     finally:
         dataset.close()
-    return dict(output=str(output), method=model.method, samples=len(dataset), candidates=candidates,
+    return dict(output=str(output), method=model.method, model_variant=model.cfg.variant,
+                samples=len(dataset), candidates=candidates,
                 nfe_per_candidate=steps, encoding_and_generation_seconds=total_seconds,
                 note='Timing excludes SVD/IK, collision checks and physics; physical success is unmeasured.')
 
@@ -127,6 +130,8 @@ def decode_file(samples, output, *, tolerance_m=0.003, max_nfev=100):
                 for j, keypoints in enumerate(f['K'][i]):
                     started = time.perf_counter()
                     row = dict(sample_index=i, candidate_index=j, scene_id=key[0], view_id=key[1],
+                               model_variant=text(f.attrs.get('model_variant', 'full')),
+                               palm_gap_conditioned=bool(f.attrs.get('palm_gap_conditioned', True)),
                                grasp_id=text(f['grasp_id'][i]), requested_palm_gap_m=float(f['h'][i, 0]),
                                physical_success=None, collision_free=None)
                     try:

@@ -12,11 +12,14 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Sampler
 from ..config import ModelConfig, model_config
-from ..data.dataset import GraspDataset, audit_dataset, sha256
+from ..data.dataset import GraspDataset, audit_dataset, sha256, checkpoint_identity_matches
 from ..geometry.hand import URDFHand
 from ..models.encoders import GeometryEncoder
 from ..models.keypoint import KeypointModel
 from .objectives import fm_loss, flowmap_loss, sample_keypoints, evaluation
+from .optimizers import make_optimizer
+from .execution import configure_execution
+from .checkpoints import ARCHIVE_EVERY, atomic_checkpoint
 
 
 def source_state():
@@ -25,27 +28,22 @@ def source_state():
     result = subprocess.run(['git', '-C', str(repo), 'rev-parse', 'HEAD'], capture_output=True, text=True)
     status = subprocess.run(['git', '-C', str(repo), 'status', '--short'], capture_output=True, text=True)
     files = sorted(root.rglob('*.py')) + sorted((repo/'scripts/patches').glob('*.patch')) + sorted((repo/'scripts').glob('*.py'))
-    return dict(git_commit=result.stdout.strip() if result.returncode == 0 else None,
-                git_status=status.stdout.strip(),
+    origin = json.loads((repo/'source_origin.json').read_text()) if (repo/'source_origin.json').exists() else {}
+    return dict(git_commit=result.stdout.strip() if result.returncode == 0 else origin.get('git_commit'),
+                git_status=status.stdout.strip() if status.returncode == 0 else origin.get('git_status', ''),
                 source_sha256={str(p.relative_to(repo)): sha256(p) for p in files})
 
 
 def runtime_identity():
     versions = {name: importlib.metadata.version(name) for name in ('torch', 'numpy', 'h5py', 'scipy')}
     versions['torch_cuda'] = torch.version.cuda
+    versions['torch_allocator_config'] = os.environ.get('PYTORCH_CUDA_ALLOC_CONF')
     versions['minkowski_extension_sha256'] = None
     if importlib.util.find_spec('MinkowskiEngineBackend') is not None:
         spec = importlib.util.find_spec('MinkowskiEngineBackend._C')
         if spec is not None and spec.origin:
             versions['minkowski_extension_sha256'] = sha256(spec.origin)
     return versions
-
-
-def atomic_checkpoint(path, state):
-    path = Path(path)
-    temporary = path.with_suffix(path.suffix+'.tmp')
-    torch.save(state, temporary)
-    os.replace(temporary, path)
 
 
 def move_batch(batch, device):
@@ -120,6 +118,8 @@ def load_model(checkpoint, device, *, encoder_factory=GeometryEncoder):
         raise ValueError('checkpoint is not a DexGrasp v1 model')
     model = KeypointModel(ModelConfig(**state['model_config']), state['method'], encoder_factory=encoder_factory).to(device)
     model.load_state_dict(state['model'])
+    from .execution import configure_attention_precision
+    configure_attention_precision(model)
     model.eval()
     return model, state
 
@@ -128,7 +128,7 @@ def load_teacher(cfg, data_identity, hand_hash, device, encoder_factory):
     teacher, state = load_model(cfg['teacher_checkpoint'], device, encoder_factory=encoder_factory)
     if state['method'] != 'fm' or state.get('step', 0) < 1:
         raise ValueError('teacher must be an FM checkpoint with recorded optimizer steps')
-    if state['data_identity'] != data_identity or state['hand_spec_sha256'] != hand_hash:
+    if not checkpoint_identity_matches(state['data_identity'], data_identity, cfg['dataset_root']) or state['hand_spec_sha256'] != hand_hash:
         raise ValueError('teacher and student must use the same dataset, split and hand calibration')
     teacher.requires_grad_(False)
     teacher.eval()
@@ -152,9 +152,9 @@ def initialize_student(student, teacher):
 def initialize_checkpoint(model, path, identity, hand_hash):
     state = torch.load(path, map_location='cpu', weights_only=False)
     if (state.get('schema') != 'dexgrasp-v1' or state.get('method') != model.method
-            or state.get('step', 0) < 1 or state['model_config'] != asdict(model.cfg)):
-        raise ValueError('initial checkpoint method/dimensions mismatch or no training steps')
-    if state['data_identity'] != identity or state['hand_spec_sha256'] != hand_hash:
+            or state.get('step', 0) < 1 or ModelConfig(**state['model_config']) != model.cfg):
+        raise ValueError('initial checkpoint method/variant/dimensions mismatch or no training steps')
+    if not checkpoint_identity_matches(state['data_identity'], identity, state['config']['dataset_root']) or state['hand_spec_sha256'] != hand_hash:
         raise ValueError('initial checkpoint must use the same dataset and hand calibration')
     model.load_state_dict(state['model'], strict=True)
     return sha256(path)
@@ -165,7 +165,8 @@ def train_mode(model, cfg):
     if cfg.get('freeze_encoders', False):
         # Freezing parameters also freezes BatchNorm running statistics.
         model.object_encoder.eval()
-        model.scene_encoder.eval()
+        if model.scene_encoder is not None:
+            model.scene_encoder.eval()
 
 
 @torch.no_grad()
@@ -243,15 +244,17 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
     if cfg['method'] == 'flowmap':
         teacher = load_teacher(cfg, identity, hand_hash, device, encoder_factory)
         if asdict(teacher.cfg) != asdict(mc):
-            raise ValueError('v1 teacher/student must share the same model dimensions and geometry scales')
+            raise ValueError('v1 teacher/student must share the same variant, model dimensions and geometry scales')
         teacher_hash = sha256(cfg['teacher_checkpoint'])
         if cfg.get('initialization', 'random') == 'fm_teacher':
             initialize_student(model, teacher)
     if cfg.get('freeze_encoders', False):
         model.object_encoder.requires_grad_(False)
-        model.scene_encoder.requires_grad_(False)
+        if model.scene_encoder is not None:
+            model.scene_encoder.requires_grad_(False)
+    configure_execution(model, cfg)
     trainable = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.AdamW(trainable, lr=cfg['lr'], weight_decay=cfg['weight_decay'])
+    optimizer = make_optimizer(model, cfg, fused=device.type == "cuda")
     start, best = 0, float('inf')
     if resume:
         state = torch.load(resume, map_location='cpu', weights_only=False)
@@ -275,7 +278,8 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
         raise ValueError('stop_after must be after the resumed step and at most max_steps')
     datasets = {s: GraspDataset(cfg['dataset_root'], s, mc.coord_scale_m,
                                observation_cache_size=cfg['observation_cache_size'],
-                               max_open_shards=cfg['max_open_shards']) for s in ('train', 'val')}
+                               max_open_shards=cfg['max_open_shards'],
+                               condition_keys=mc.condition_keys) for s in ('train',)}
     sampler = ResumeBatchSampler(len(datasets['train']), cfg['batch_size'], cfg['seed'],
                                 start*cfg['accumulation'], (cfg['max_steps']-start)*cfg['accumulation'])
     loader_options = dict(num_workers=cfg['num_workers'], pin_memory=device.type == 'cuda',
@@ -283,13 +287,14 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
     # Separate RNGs avoid loader iterator creation consuming model noise/time RNG state.
     train_loader = DataLoader(datasets['train'], batch_sampler=sampler,
                               generator=torch.Generator().manual_seed(cfg['seed']), **loader_options)
-    val_loader = DataLoader(datasets['val'], batch_size=cfg['batch_size'], shuffle=False,
+    val_loader = DataLoader(datasets['train'], batch_size=cfg['batch_size'], shuffle=False,
                             generator=torch.Generator().manual_seed(cfg['seed']+1), **loader_options)
     diagnostic_loader = DataLoader(datasets['train'], batch_size=cfg['batch_size'], shuffle=False,
                                    generator=torch.Generator().manual_seed(cfg['seed']+2), **loader_options)
     run_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
-    val_name = 'velocity_mse' if cfg['method'] == 'fm' else 'paired_endpoint_mse_diagnostic'
+    # Legacy val_every/val_batches configuration keys now control train-only diagnostics.
+    val_name = 'train_velocity_mse' if cfg['method'] == 'fm' else 'train_paired_endpoint_mse_diagnostic'
     overfit = cfg.get('overfit_diagnostic', False)
     selection_metric = 'train_mpjpe_mm' if overfit else val_name
     if not resume:
@@ -345,7 +350,7 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
                     best = min(best, value)
                 log.write(json.dumps(record, allow_nan=False)+'\n')
                 log.flush()
-                if improved or step % cfg['save_every'] == 0 or step == cfg['max_steps'] or step == stop_after:
+                if improved or step % cfg['save_every'] == 0 or step % ARCHIVE_EVERY == 0 or step == cfg['max_steps'] or step == stop_after:
                     state = dict(schema='dexgrasp-v1', method=cfg['method'], step=step, config=cfg,
                                  model_config=asdict(mc), model=model.state_dict(), optimizer=optimizer.state_dict(),
                                  source=source, data_identity=identity, hand_spec_sha256=hand_hash,

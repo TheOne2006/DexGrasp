@@ -88,7 +88,7 @@ class TrainingTests(unittest.TestCase):
         self.assertIsNone(result['physical_success_rate'])
         state = torch.load(self.root/'flowmap_ckpt/last.pt', weights_only=False)
         self.assertIsNotNone(state['teacher_sha256'])
-        self.assertEqual(state['validation_metric'], 'paired_endpoint_mse_diagnostic')
+        self.assertEqual(state['validation_metric'], 'train_paired_endpoint_mse_diagnostic')
         bad = {**cfg, 'run_dir': str(self.root/'bad_run'), 'checkpoint_dir': str(self.root/'bad_ckpt'),
                'model': {**cfg['model'], 'coord_scale_m': .5}}
         with self.assertRaisesRegex(ValueError, 'scales'): self.fake_train(bad)

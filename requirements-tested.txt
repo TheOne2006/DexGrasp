@@ -1,6 +1,0 @@
-# Versions checked in the project-local .venv for v1 (system packages are read-only).
-# The installed Torch build is 2.7.0a0+7c8ec84dab.nv25.03; use a wheel matching your CUDA.
-# MinkowskiEngine requires a separate native build; see docs/validation.md.
-numpy==1.26.4
-h5py==3.16.0
-scipy==1.15.2

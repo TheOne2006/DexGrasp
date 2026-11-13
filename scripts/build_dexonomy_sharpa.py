@@ -15,7 +15,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 import trimesh
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from build_overfit_dataset import make_hand, box
+from dexgrasp.data.sharpa_assets import make_hand, box
 from dexgrasp.data.retarget import ShadowLandmarks, retarget
 from dexgrasp.data.prepare import ShardWriter
 from dexgrasp.data.dataset import audit_dataset, sha256
@@ -131,11 +131,11 @@ def main(args):
     (root/'shards').mkdir();(root/'splits').mkdir()
     hand=URDFHand(root/'hand/hand_spec.json')
     writer=ShardWriter(root/'shards/part-00000.h5',hand.spec_path)
-    rows={s:[] for s in ('train','val','test')}; records=[]
+    rows={s:[] for s in ('train','test')}; records=[]
     rng=np.random.default_rng(20261110)
     try:
         for j,report in enumerate(chosen):
-            split='train' if j<16 else 'val' if j<18 else 'test'
+            split='train' if j<16 else 'test'
             for record in report['accepted']:
                 gid=record['id'];d=np.load(root/'candidates'/f'{gid}.npz',allow_pickle=False)
                 target=(d['vertices'],d['faces'])
@@ -148,7 +148,7 @@ def main(args):
                 oi=writer.observation(obs)
                 R,t,q=[d[k].astype(np.float32) for k in ('R','t','q')]
                 K=hand.world_keypoints(R,t,q).astype(np.float32)
-                row=dict(observation_index=oi,grasp_id=gid,R=R,t=t,q=q,K=K,d=R[:,2],
+                row=dict(observation_index=oi,grasp_id=gid,R=R,t=t,q=q,K=K,d=(R @ np.asarray(hand.spec['direction_condition']['local_axis'])).astype(np.float32),
                          h=np.array([record['h']],np.float32),hit_ratio=np.float32(record['hit_ratio']))
                 gi=writer.grasp(row);rows[split].append(dict(shard='shards/part-00000.h5',grasp_index=gi))
                 record.update(split=split,grasp_index=gi,scene_id=scene_id)

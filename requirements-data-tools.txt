@@ -1,6 +1,0 @@
-# Optional tools for source-backed Sharpa retargeting and independent FK validation.
-# Install only into this repository's .venv.
-trimesh==5.2.0
-rtree==1.4.1
-mujoco==4.0.0
-requests==2.32.3

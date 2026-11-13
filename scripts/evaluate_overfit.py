@@ -8,7 +8,9 @@ import torch
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from dexgrasp.data.dataset import GraspDataset, audit_dataset, sha256
+from dexgrasp.data.dataset import GraspDataset, audit_dataset, sha256, checkpoint_identity_matches
+from dexgrasp.geometry.hand import URDFHand
+from dexgrasp.train.runner import source_state
 from dexgrasp.train.runner import load_model, move_batch
 from dexgrasp.train.objectives import sample_keypoints
 
@@ -20,16 +22,22 @@ def evaluate(checkpoint, output, device='cuda:0', seeds=32, batch_size=8):
     model, state = load_model(checkpoint, device)
     cfg = state['config']
     audit = audit_dataset(cfg['dataset_root'], model.cfg.coord_scale_m)
-    # The runner adds the URDF hash to data_identity separately.
-    assert all(state['data_identity'][k] == v for k, v in audit.items())
+    audit['hand_urdf_sha256'] = sha256(URDFHand(Path(cfg['dataset_root'])/'hand/hand_spec.json').urdf_path)
+    if not checkpoint_identity_matches(state['data_identity'], audit, cfg['dataset_root']):
+        raise ValueError('Checkpoint and evaluation dataset identity differ')
     summary = dict(checkpoint=str(checkpoint.resolve()), checkpoint_sha256=sha256(checkpoint),
                    method=model.method, optimizer_steps=state['step'], seed_start=40000,
+                   model_variant=model.cfg.variant, palm_gap_conditioned=model.cfg.use_gap,
                    seeds=seeds, batch_size=batch_size, sampling_steps=cfg['sample_steps'],
                    ranking='none; every sample counted', physical_success_rate=None,
-                   scope='kinematic diagnostic; no claim of grasp or generalization success', splits={})
+                   scope='kinematic diagnostic; no claim of grasp or generalization success',
+                   dataset_root=cfg['dataset_root'], data_identity=audit, source=source_state(), splits={})
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.with_suffix('.protocol.json').write_text(json.dumps(summary, indent=2)+'\n')
     arrays = {}
-    for split in ('train', 'val', 'test'):
-        ds = GraspDataset(cfg['dataset_root'], split, model.cfg.coord_scale_m)
+    for split in ('train', 'test'):
+        ds = GraspDataset(cfg['dataset_root'], split, model.cfg.coord_scale_m,
+                          condition_keys=model.cfg.condition_keys)
         loader = DataLoader(ds, batch_size=batch_size, shuffle=False)
         predictions, targets, centers = [], [], []
         for seed in range(40000, 40000+seeds):
@@ -42,6 +50,7 @@ def evaluate(checkpoint, output, device='cuda:0', seeds=32, batch_size=8):
                     targets.append(batch['keypoints_gt'].cpu())
                     centers.append(batch['metadata']['center_m'].cpu())
             predictions.append(torch.cat(chunks))
+            print(f'{split}: seed {seed} / {len(ds)} samples complete', flush=True)
         predicted = torch.stack(predictions)
         gt, center = torch.cat(targets), torch.cat(centers)
         error = (predicted-gt[None]).norm(dim=-1)*model.cfg.coord_scale_m*1000

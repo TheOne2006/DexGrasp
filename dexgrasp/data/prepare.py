@@ -8,6 +8,7 @@ import numpy as np
 from .dataset import (FLOAT_SHAPES, SPLITS, contained, sha256, validate_grasp,
                       validate_observation)
 from ..geometry.hand import URDFHand
+from ..geometry.direction import direction_definition, hand_direction
 from ..geometry.mesh import (combine_meshes, load_mesh, measure_palm_gap,
                              sample_observation, validate_closed_mesh)
 
@@ -17,6 +18,7 @@ class ShardWriter:
         self.file = h5py.File(path, 'x')
         spec = json.loads(Path(hand_spec_path).read_text())
         self.ray_count = len(spec['palm']['ray_origins_m'])
+        self.direction_axis = direction_definition(spec)['local_axis']
         self.file.attrs.update(schema_version=1, hand_spec_sha256=sha256(hand_spec_path),
                                point_sampling='full_mesh_area_uniform', label_version=spec['label_version'])
         self.obs_count, self.grasp_count = 0, 0
@@ -51,7 +53,7 @@ class ShardWriter:
         return index
 
     def grasp(self, row):
-        validate_grasp(row, self.ray_count)
+        validate_grasp(row, self.ray_count, self.direction_axis)
         if not 0 <= row['observation_index'] < self.obs_count:
             raise ValueError('grasp references an absent observation')
         index = self.grasp_count
@@ -102,7 +104,7 @@ def prepare_dataset(root, *, seed=0, grasps_per_shard=4096):
     object_splits, scene_splits = {}, {}
     for _, scene in scene_specs:
         if scene['split'] not in SPLITS:
-            raise ValueError('each scene needs an explicit train/val/test split')
+            raise ValueError('each scene needs an explicit train/test split')
         for mapping, key in ((object_splits, scene['object_id']), (scene_splits, scene['scene_id'])):
             if key in mapping and mapping[key] != scene['split']:
                 raise ValueError('object/scene split leakage in raw input')
@@ -170,7 +172,7 @@ def prepare_dataset(root, *, seed=0, grasps_per_shard=4096):
                         obs_index = writer.observation(obs)
                     row = dict(observation_index=obs_index, grasp_id=gid, R=rotation, t=translation, q=q,
                                K=hand.world_keypoints(rotation, translation, q).astype(np.float32),
-                               d=rotation[:, 2].copy(), h=np.array([gap['h']], np.float32),
+                               d=hand_direction(rotation, hand.spec).astype(np.float32), h=np.array([gap['h']], np.float32),
                                hit_ratio=np.float32(gap['hit_ratio']))
                     gi = writer.grasp(row)
                     rows[scene['split']].append(dict(shard=shard, grasp_index=gi))

@@ -3,6 +3,14 @@ import torch
 from torch import nn
 
 
+def selected_point_features(output, field, indices, points_per_cloud):
+    """Compose the inverse voxel map with FPS before gathering feature channels."""
+    rows = torch.arange(len(indices), device=indices.device)[:, None]
+    point_ids = rows*points_per_cloud + indices
+    inverse = field.inverse_mapping(output.coordinate_map_key).long()
+    return output.F[inverse[point_ids]]
+
+
 @torch.no_grad()
 def farthest_point_indices(points, count):
     """Deterministic FPS, starting farthest from the centroid; O(B*N*count)."""
@@ -37,6 +45,8 @@ class GeometryEncoder(nn.Module):
         self.backbone = MinkUNet14(in_channels=1, out_channels=cfg.backbone_channels)
         self.voxel_size = cfg.voxel_size_m / cfg.coord_scale_m
         self.tokens = cfg.tokens
+        self.fps_backend = 'torch'
+        self.select_tokens_before_slice = False
         self.project = nn.Linear(cfg.backbone_channels, cfg.width)
         self.position = nn.Sequential(nn.Linear(3, 128), nn.SiLU(), nn.Linear(128, cfg.width))
 
@@ -55,12 +65,17 @@ class GeometryEncoder(nn.Module):
             )
             # Averaging preserves mixed target/background voxels instead of choosing a random label.
             output = self.backbone(field.sparse())
-            features = output.slice(field).F.reshape(b, n, -1)
         if indices is None:
-            indices = farthest_point_indices(points, self.tokens)
+            if self.fps_backend == 'triton':
+                from .fps_triton import farthest_point_indices_triton
+                indices = farthest_point_indices_triton(points, self.tokens)
+            else:
+                indices = farthest_point_indices(points, self.tokens)
         elif indices.shape != (b, self.tokens) or indices.dtype != torch.long or indices.device != points.device:
             raise ValueError('invalid cached FPS indices')
         rows = torch.arange(b, device=points.device)[:, None]
         centers = points[rows, indices]
-        tokens = self.project(features[rows, indices]) + self.position(centers)
+        features = (selected_point_features(output, field, indices, n) if self.select_tokens_before_slice
+                    else output.slice(field).F.reshape(b, n, -1)[rows, indices])
+        tokens = self.project(features) + self.position(centers)
         return tokens, centers

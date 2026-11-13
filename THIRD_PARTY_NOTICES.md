@@ -35,4 +35,22 @@ headers. The patch is applied only to the project-local dependency checkout.
 
 The Shadow kinematics input is `assets/hand/shadow/right.xml` from [Dexonomy](https://github.com/JYChen18/Dexonomy), commit `d561ff9df8545deef7a3f9e7cfb4045ef66f6913`, based on the Apache-2.0 MuJoCo Menagerie Shadow model. The copied dataset asset retains the Shadow Apache-2.0 notice. The adapter is original project code and strips geometry for kinematics only. Sharpa asset attribution remains as documented above.
 
-The explorer bundles a subset of Noto Sans SC, Copyright The Noto Project Authors, under the SIL Open Font License 1.1; license at `site/public/fonts/OFL.txt`. React, Vite, Three.js and Playwright retain their package licenses in their respective dependency distributions.
+## Geometry and force-test evaluation
+
+`dexgrasp/test/physics.py` and `scripts/evaluate_physics.py` independently implement
+metric definitions described by KPGrasp, Dexonomy and DexGraspBench; no source
+implementation is copied. The reference definitions are attributed in README.
+The adapted single-pose Sharpa protocol is not the original Shadow benchmark.
+The asset preparation command downloads official Sharpa XML and collision meshes
+at revision `d323b371d02f4fc04a0873c19c5234cae6d803dd` into the outer `data/`
+directory, together with the upstream LICENSE.txt and NOTICE.txt and file hashes.
+The original XML is preserved; the derived XML removes noncollision visuals only.
+CoACD is used as an installed dependency, not vendored source. Its generated
+object collision meshes retain the archived source mesh identity in manifests.
+
+## Muon compatibility
+
+`dexgrasp/vendor/muon.py` is PyTorch v2.9.0 `torch/optim/_muon.py`,
+with an absolute optimizer import and a local scalar helper for PyTorch 2.7.
+Source: https://github.com/pytorch/pytorch/blob/v2.9.0/torch/optim/_muon.py
+The full upstream copyright and license are in `licenses/PyTorch-LICENSE.txt`.

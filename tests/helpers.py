@@ -93,7 +93,7 @@ def dataset_fixture(root, *, raw=False):
         (root/'shards').mkdir()
         (root/'splits').mkdir()
         writer = ShardWriter(root/'shards/part-00000.h5', spec_path)
-    for i, split in enumerate(('train', 'val', 'test')):
+    for i, split in enumerate(('train', 'test')):
         scene = dict(scene_id=f's{i}', view_id='v0', object_id=f'object{i}', split=split,
                      target_id='target', camera=None, collision_validation_version='synthetic-not-physical',
                      instances=[dict(instance_id=key, mesh=f'assets/{key}.npz', scale=1.,

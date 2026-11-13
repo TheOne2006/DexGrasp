@@ -24,7 +24,7 @@ def main(argv=None):
     sample.add_argument('--checkpoint', required=True)
     sample.add_argument('--dataset-root', required=True)
     sample.add_argument('--output', required=True)
-    sample.add_argument('--split', choices=('train', 'val', 'test'), default='test')
+    sample.add_argument('--split', choices=('train', 'test'), default='test')
     sample.add_argument('--steps', type=int)
     sample.add_argument('--candidates', type=int, default=8)
     sample.add_argument('--batch-size', type=int, default=8)

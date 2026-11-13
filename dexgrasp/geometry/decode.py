@@ -1,5 +1,6 @@
 """Proper rigid registration followed by bounded finger IK; no physical-success claim."""
 import numpy as np
+from .direction import hand_direction
 
 
 def rigid_registration(template, observed):
@@ -43,7 +44,7 @@ def decode_keypoints(keypoints_m, hand, direction, *, q_initial=None, tolerance_
     if d.shape != (3,) or not np.isfinite(d).all() or np.linalg.norm(d) < 1e-8:
         raise ValueError('nonzero direction required')
     d /= np.linalg.norm(d)
-    angle = float(np.degrees(np.arccos(np.clip(rotation[:, 2] @ d, -1, 1))))
+    angle = float(np.degrees(np.arccos(np.clip(hand_direction(rotation, hand.spec) @ d, -1, 1))))
     return dict(R=rotation, t=translation, q=result.x, reconstructed_keypoints=rebuilt,
                 ik_success=bool(result.success and error <= tolerance_m and palm_error <= tolerance_m),
                 optimizer_success=bool(result.success), ik_nfev=int(result.nfev),

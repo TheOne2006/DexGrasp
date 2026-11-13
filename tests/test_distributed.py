@@ -1,7 +1,9 @@
 """DDP data/forward regression tests. No optimizer steps are performed."""
 import unittest
+from unittest.mock import patch
 import torch
-from dexgrasp.train.distributed import GlobalBatchStream, cached_batch, FMLossModule
+from dexgrasp.train.distributed import (GlobalBatchStream, cached_batch, FMLossModule,
+                                      StreamBatchSampler, local_device_index)
 from dexgrasp.models.keypoint import KeypointModel
 from dexgrasp.models.encoders import farthest_point_indices
 from helpers import FixtureEncoder, small_config, condition
@@ -17,6 +19,25 @@ class CachedFixtureEncoder(FixtureEncoder):
 
 
 class DistributedTests(unittest.TestCase):
+    def test_arbitrary_world_size_and_accumulation_prefetch_resume(self):
+        for world in (1, 2, 4, 8):
+            for size in (7, 113):
+                streams = [GlobalBatchStream(size, 3, world, rank, 19) for rank in range(world)]
+                serial = GlobalBatchStream(size, 3*world, 1, 0, 19)
+                for micro in range(12):
+                    self.assertEqual(sum((s.indices(micro) for s in streams), []), serial.indices(micro))
+                for rank in range(world):
+                    fresh = GlobalBatchStream(size, 3, world, rank, 19)
+                    all_batches = list(StreamBatchSampler(fresh, 0, 12))
+                    resumed = GlobalBatchStream(size, 3, world, rank, 19)
+                    self.assertEqual(list(StreamBatchSampler(resumed, 6, 12)), all_batches[6:])
+
+    def test_device_mapping_supports_isolated_and_standard_launch(self):
+        with patch.dict('os.environ', {'LOCAL_RANK': '3'}, clear=True):
+            self.assertEqual(local_device_index(), 3)
+        with patch.dict('os.environ', {'LOCAL_RANK': '3', 'DEXGRASP_ISOLATED_GPU': '1'}, clear=True):
+            self.assertEqual(local_device_index(), 0)
+
     def test_full_2048_batch_is_partition_of_common_stream_and_resumes(self):
         serial = GlobalBatchStream(800, 2048, 1, 0, 42)
         ranks = [GlobalBatchStream(800, 256, 8, r, 42) for r in range(8)]

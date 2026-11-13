@@ -2,8 +2,12 @@
 
 - 本目录是 Git/GitHub 根目录。上层是研究工作区，`../reference/` 中每个项目是独立上游仓库，不是本仓库子模块。
 - 三个业务部分统一称为 data、train、test。自有最终评估划分称 `test`；数据适配层保留上游 `test.json`，兼容早期 `evaluation` 标签。`tests/` 仅用于软件单元测试。
-- 项目结构见 `docs/project-structure.md`，参考代码用法见 `docs/reference-code.md`；参考清单记录来源和接口，不要求固定上游 commit。
+- `docs/` 仅保留 `model-v1.md`（当前架构与用户原始架构说明）和 `data.md`（数据协议与来源）。目录职责见 `README.md`；参考清单 `configs/references.json` 记录来源和接口，不要求固定上游 commit。
 - 自有模型训练不依赖 reference；FK/IK 等显式适配器按需使用参考代码。移植代码时保留来源说明及对应版权/许可证文本，业务修改在本仓库落地。
+- 数据展示板及其服务、展示导出工具放在上层 `../site/`，与本仓库同级，不纳入训练和测试代码仓库。
 - 数据、权重、结果使用上层 `data/`、`checkpoints/`、`outputs/`。不要将其提交到 GitHub。
+- 训练按实验配置的 save_every 永久保留独立的 `step_XXXXXX.pt` 检查点；2026-11-11 正式四组对照按用户要求每 5,000 个 optimizer step 保存，历史实验保留原间隔，结束时也保留最终版本；`last.pt` 仅作为最新恢复入口。未经用户明确要求，不清理这些历史检查点。
 - 不修改其他 EPIC 项目、共享环境或系统设置。没有明确授权时不提交、不推送、不启动正式训练。
 - 修改数据或评估接口后运行相关软件测试；不得把 IK 拟合成功当作物理抓取成功。当前训练循环单元测试禁用 optimizer.step。
+
+- 自有数据仅保留 train/test；原 val 合并入 test。训练诊断只读取 train，不使用 test 选 checkpoint。

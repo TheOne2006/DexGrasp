@@ -19,3 +19,6 @@ __pycache__/
 /build/
 /dist/
 /.tools/
+
+.venv-*/
+/docs/agent-context/

@@ -1,0 +1,701 @@
+{
+  "source_commit": "9c220bd8127eb0a1afd76e9c7ab5b48abf92d277",
+  "upstream_commit": "d561ff9df8545deef7a3f9e7cfb4045ef66f6913",
+  "files": [
+    {
+      "source": "dexonomy/__init__.py",
+      "destination": "simulation/dexonomy/__init__.py",
+      "original_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "current_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/acceptance_audit.py",
+      "destination": "simulation/dexonomy/acceptance_audit.py",
+      "original_sha256": "a277ed5c4be77758728dc263d44fef7b36044efd2b2c6eb95d2e67cf3d414644",
+      "current_sha256": "a277ed5c4be77758728dc263d44fef7b36044efd2b2c6eb95d2e67cf3d414644",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/cli.py",
+      "destination": "simulation/dexonomy/cli.py",
+      "original_sha256": "b6e03e2ace39d8f58c44764f731c28bf265e55c31b5bae7d17bd0cc904ebb4d9",
+      "current_sha256": "8b967db48a5519bea2cf7a4d3d642036dbfd5f356e22ab8bdeb2775b770b7b39",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/config/__init__.py",
+      "destination": "simulation/dexonomy/config/__init__.py",
+      "original_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "current_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/config/asset_manifest.json",
+      "destination": "simulation/dexonomy/config/asset_manifest.json",
+      "original_sha256": "862efbea3ee2b0095a8a71989ca7d7387ea2af316dc01ae73f9ebd33b4ba8d04",
+      "current_sha256": "862efbea3ee2b0095a8a71989ca7d7387ea2af316dc01ae73f9ebd33b4ba8d04",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/config/base.yaml",
+      "destination": "simulation/dexonomy/config/base.yaml",
+      "original_sha256": "fa6eea077b4cb3f76f4f757d530233fd386bf00522f849a0b3dc74be1bd8c60d",
+      "current_sha256": "a108fa553f5185e52843e28cbdedc36a094da1c1d58d10f233c60bd3a4a6fe7e",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/config/hand/sharpa_v2.yaml",
+      "destination": "simulation/dexonomy/config/hand/sharpa_v2.yaml",
+      "original_sha256": "521fbd0be6dc128687e994d5624073eab1cc4863e206eeab2b2430b7aaba1ff9",
+      "current_sha256": "521fbd0be6dc128687e994d5624073eab1cc4863e206eeab2b2430b7aaba1ff9",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/config/op/eval.yaml",
+      "destination": "simulation/dexonomy/config/op/eval.yaml",
+      "original_sha256": "d98e6461eb7a6f4877e704e8e437b16cc8367054bc298d416300e68249a6b02a",
+      "current_sha256": "d98e6461eb7a6f4877e704e8e437b16cc8367054bc298d416300e68249a6b02a",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/config/op/grasp.yaml",
+      "destination": "simulation/dexonomy/config/op/grasp.yaml",
+      "original_sha256": "b4046f498ef1d58dc1ae2e5b4e8aeba5e262c8bc523d7e0462920d116dac29bd",
+      "current_sha256": "b438b1897c510fa5ce876413ffa9354a907c435088c183e8fa321367f5ab9539",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/config/op/grasp_admm.yaml",
+      "destination": "simulation/dexonomy/config/op/grasp_admm.yaml",
+      "original_sha256": "f33cd858f7c1bd1f0e26d5b9f1e138582c9384f5ead6b90042115b0482ffa819",
+      "current_sha256": "29dea435e3784d7a76dd5095d5e685c72eed2aefc8edacff00349dfebfddf5d6",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/config/op/init.yaml",
+      "destination": "simulation/dexonomy/config/op/init.yaml",
+      "original_sha256": "9c06a14286d57f8577466a8a34aef02450dab40784ce6ae9f531018f193e5758",
+      "current_sha256": "75fa33f6e08aac0fb3dc2249f44f59368c5ec35a1215ef0f024d03a08cc71cdf",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/data/__init__.py",
+      "destination": "simulation/dexonomy/data/__init__.py",
+      "original_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "current_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/data/family_pool.py",
+      "destination": "simulation/dexonomy/data/family_pool.py",
+      "original_sha256": "eb27412c85d0758b3ccbc097ee541e49a240f7340d95375494a29833c16a5d6e",
+      "current_sha256": "eb27412c85d0758b3ccbc097ee541e49a240f7340d95375494a29833c16a5d6e",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/data/hand_loader.py",
+      "destination": "simulation/dexonomy/data/hand_loader.py",
+      "original_sha256": "4822580fedfb34e6874346223fe9e8c9bba08f8da0caacab971147349ace6646",
+      "current_sha256": "4822580fedfb34e6874346223fe9e8c9bba08f8da0caacab971147349ace6646",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/data/obj_loader.py",
+      "destination": "simulation/dexonomy/data/obj_loader.py",
+      "original_sha256": "2484ec49d0ff539246c4776648046153736e9765e78ba5af74bb0ad15e17e27e",
+      "current_sha256": "2484ec49d0ff539246c4776648046153736e9765e78ba5af74bb0ad15e17e27e",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/night_contracts.py",
+      "destination": "simulation/dexonomy/night_contracts.py",
+      "original_sha256": "ac50884b5824ed5435d22eced8beac0c54a6686b34e991c9cbd17a15f2ec71e0",
+      "current_sha256": "ac50884b5824ed5435d22eced8beac0c54a6686b34e991c9cbd17a15f2ec71e0",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/op/__init__.py",
+      "destination": "simulation/dexonomy/op/__init__.py",
+      "original_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "current_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/op/eval_force_closure_warp.py",
+      "destination": "simulation/dexonomy/op/eval_force_closure_warp.py",
+      "original_sha256": "26091d034c23858c32ea5cf9f7093e2f965f05a0c359e3c3fb7e3e1011beff06",
+      "current_sha256": "794ec110f81210f754aad73917ec9ad7df4356f9c1a02b390f4e7080139c459c",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/op/eval_force_closure_warp_mixed.py",
+      "destination": "simulation/dexonomy/op/eval_force_closure_warp_mixed.py",
+      "original_sha256": "c8fc47d73790ee1b687efead05ef6b29b5ecfdff8d4707edc3de4ddfaaf72db5",
+      "current_sha256": "c8fc47d73790ee1b687efead05ef6b29b5ecfdff8d4707edc3de4ddfaaf72db5",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/op/gen_grasp.py",
+      "destination": "simulation/dexonomy/op/gen_grasp.py",
+      "original_sha256": "99c8a1cc9a8ecc1220608c34e37ed8295ee57615cba1cdc6368ff885fedcaf9b",
+      "current_sha256": "99c8a1cc9a8ecc1220608c34e37ed8295ee57615cba1cdc6368ff885fedcaf9b",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/op/gen_grasp_admm.py",
+      "destination": "simulation/dexonomy/op/gen_grasp_admm.py",
+      "original_sha256": "3b3694f12b0f78c80879c4d78fef841761c7166b7f9e672350c760a245b7b0f4",
+      "current_sha256": "e99c9e54817912e6db74426a60142bebcc3a7105f527ca6ebc5d76b74f5d21a9",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/op/gen_grasp_admm_warp.py",
+      "destination": "simulation/dexonomy/op/gen_grasp_admm_warp.py",
+      "original_sha256": "8accac7a149b2ade009cd77849d1730c91c6908903fb437a9bf5b2df4b361185",
+      "current_sha256": "8accac7a149b2ade009cd77849d1730c91c6908903fb437a9bf5b2df4b361185",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/op/gen_grasp_warp_resident.py",
+      "destination": "simulation/dexonomy/op/gen_grasp_warp_resident.py",
+      "original_sha256": "2bba72822764b77344c33719efc211614744a76584ec9c4ec15deb921e17d0ca",
+      "current_sha256": "2bba72822764b77344c33719efc211614744a76584ec9c4ec15deb921e17d0ca",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/op/gen_init.py",
+      "destination": "simulation/dexonomy/op/gen_init.py",
+      "original_sha256": "d934b124c5507f09be40ce8302532da1f41cc2a662057d6d3e84cc5f1702b503",
+      "current_sha256": "d934b124c5507f09be40ce8302532da1f41cc2a662057d6d3e84cc5f1702b503",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/op/simulation_isolation.py",
+      "destination": "simulation/dexonomy/op/simulation_isolation.py",
+      "original_sha256": "60f9cac57c1395819bfa32681eb38cb2ad2a648f28f172ee72a2bc51580248dd",
+      "current_sha256": "60f9cac57c1395819bfa32681eb38cb2ad2a648f28f172ee72a2bc51580248dd",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/preparation_policy.py",
+      "destination": "simulation/dexonomy/preparation_policy.py",
+      "original_sha256": "15fc2da289257ecc55a13284f9fc7d71d4996d5e3f2c99f732c0d4d91324066e",
+      "current_sha256": "15fc2da289257ecc55a13284f9fc7d71d4996d5e3f2c99f732c0d4d91324066e",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/qp/__init__.py",
+      "destination": "simulation/dexonomy/qp/__init__.py",
+      "original_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "current_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/qp/qp_batched.py",
+      "destination": "simulation/dexonomy/qp/qp_batched.py",
+      "original_sha256": "5e2a22d1019e591a023829f2d44bffa1ad45a8ecbd3051b95c9e1a86eb8a1e52",
+      "current_sha256": "5e2a22d1019e591a023829f2d44bffa1ad45a8ecbd3051b95c9e1a86eb8a1e52",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/qp/qp_single.py",
+      "destination": "simulation/dexonomy/qp/qp_single.py",
+      "original_sha256": "5de5484ed350aae6631fb410210b247a8eacdf7e4ac6d7052c8bfe88b4198d60",
+      "current_sha256": "dfa5acf3818ed4a93915dba204282bc71e8eb5b2c4ace2de8b5c081b0a2fc75e",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/qp/refine_batched.py",
+      "destination": "simulation/dexonomy/qp/refine_batched.py",
+      "original_sha256": "3e9ebc32c4ab3f2f5bfef1dbb681d9dfe5dd59a2e7b09d8ccc3447ed2d6a207b",
+      "current_sha256": "3e9ebc32c4ab3f2f5bfef1dbb681d9dfe5dd59a2e7b09d8ccc3447ed2d6a207b",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/qp/traditional_pool.py",
+      "destination": "simulation/dexonomy/qp/traditional_pool.py",
+      "original_sha256": "63aa97d98a2423d00cb65ae45a363c1e7e00051ae2bcd5e0cc21592d9a78a8ba",
+      "current_sha256": "63aa97d98a2423d00cb65ae45a363c1e7e00051ae2bcd5e0cc21592d9a78a8ba",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/__init__.py",
+      "destination": "simulation/dexonomy/sim/__init__.py",
+      "original_sha256": "30f328022543c0bc3b3f83c12fa733862acc1f86b668735f207410de63209f36",
+      "current_sha256": "30f328022543c0bc3b3f83c12fa733862acc1f86b668735f207410de63209f36",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/admm_cpu_projection.py",
+      "destination": "simulation/dexonomy/sim/admm_cpu_projection.py",
+      "original_sha256": "96e1464f729d36cd2b0e3ef133b7f967b0ad90c6975149877579be6f75fdabd2",
+      "current_sha256": "96e1464f729d36cd2b0e3ef133b7f967b0ad90c6975149877579be6f75fdabd2",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/basic.py",
+      "destination": "simulation/dexonomy/sim/basic.py",
+      "original_sha256": "a6c26eee224ece9e56dbde161f1b9570b72ed12e479be8793ba38ee58f13cdbf",
+      "current_sha256": "a6c26eee224ece9e56dbde161f1b9570b72ed12e479be8793ba38ee58f13cdbf",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/data_workspace.py",
+      "destination": "simulation/dexonomy/sim/data_workspace.py",
+      "original_sha256": "77238fea34095573449e1e0ca2d99f6ae866fa22e3091674c5de7a4341b74fda",
+      "current_sha256": "77238fea34095573449e1e0ca2d99f6ae866fa22e3091674c5de7a4341b74fda",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/eval_workspace.py",
+      "destination": "simulation/dexonomy/sim/eval_workspace.py",
+      "original_sha256": "37a641c254a5d69fcb473958332dfe03f9bc965be0aaf5d11e357acc1d2f2389",
+      "current_sha256": "37a641c254a5d69fcb473958332dfe03f9bc965be0aaf5d11e357acc1d2f2389",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/fc_execution.py",
+      "destination": "simulation/dexonomy/sim/fc_execution.py",
+      "original_sha256": "e95fb75b615489a5a65e8ff1e74f7d192b11c7a67733871e1f82d5d19bb36ab6",
+      "current_sha256": "e95fb75b615489a5a65e8ff1e74f7d192b11c7a67733871e1f82d5d19bb36ab6",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/model_disk_cache.py",
+      "destination": "simulation/dexonomy/sim/model_disk_cache.py",
+      "original_sha256": "3dfb39a9680299350d515c6eab5290c135df0e4f0ee71404dc792f919ace11a7",
+      "current_sha256": "3dfb39a9680299350d515c6eab5290c135df0e4f0ee71404dc792f919ace11a7",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/mujoco_env.py",
+      "destination": "simulation/dexonomy/sim/mujoco_env.py",
+      "original_sha256": "d9022b748bdb39f3be782dd5db5cc90fa261f6f2080dcb67f33bb6c8ec816606",
+      "current_sha256": "d9022b748bdb39f3be782dd5db5cc90fa261f6f2080dcb67f33bb6c8ec816606",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/mujoco_warp_admm.py",
+      "destination": "simulation/dexonomy/sim/mujoco_warp_admm.py",
+      "original_sha256": "5f9843cdad50bef99b157ccfd88c276a766cc0742f30bcebc124b9219b487c15",
+      "current_sha256": "5f9843cdad50bef99b157ccfd88c276a766cc0742f30bcebc124b9219b487c15",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/mujoco_warp_env.py",
+      "destination": "simulation/dexonomy/sim/mujoco_warp_env.py",
+      "original_sha256": "98a624b63de80b44b008bc558f1fac74f460264c0d0439f34c85c874418b8743",
+      "current_sha256": "f1a653b14454cf3c4fdd0c683d6e1f421721d86e2e47fa8616c1da3d631fe8ba",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/sim/mujoco_warp_mesh_pool.py",
+      "destination": "simulation/dexonomy/sim/mujoco_warp_mesh_pool.py",
+      "original_sha256": "a52a38b05fd6e2d0501d80903e6fba61776c83914b125da861eaccd5cb3dd4a6",
+      "current_sha256": "a52a38b05fd6e2d0501d80903e6fba61776c83914b125da861eaccd5cb3dd4a6",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/mujoco_warp_mixed.py",
+      "destination": "simulation/dexonomy/sim/mujoco_warp_mixed.py",
+      "original_sha256": "ccea98855c74ddcf5832e3bb4deaf3b8b4ad303410df4b37beb34bfc07430d5e",
+      "current_sha256": "ccea98855c74ddcf5832e3bb4deaf3b8b4ad303410df4b37beb34bfc07430d5e",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/mujoco_warp_resident_env.py",
+      "destination": "simulation/dexonomy/sim/mujoco_warp_resident_env.py",
+      "original_sha256": "5953ae6e32ba089409218387a19bcec732d6c11a1f3d4aae922b4399b125b5f8",
+      "current_sha256": "5953ae6e32ba089409218387a19bcec732d6c11a1f3d4aae922b4399b125b5f8",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/upstream_physics.py",
+      "destination": "simulation/dexonomy/sim/upstream_physics.py",
+      "original_sha256": "26d1c1afaf8b8c05f2a4be5bdce0b79e7795b3447076130eaa9e9f7be1ba7bd3",
+      "current_sha256": "26d1c1afaf8b8c05f2a4be5bdce0b79e7795b3447076130eaa9e9f7be1ba7bd3",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/warp_refinement_kernels.py",
+      "destination": "simulation/dexonomy/sim/warp_refinement_kernels.py",
+      "original_sha256": "1edb0281eeee559215db0315c83642173ad322c9ee418e291c06e856a0025aff",
+      "current_sha256": "1edb0281eeee559215db0315c83642173ad322c9ee418e291c06e856a0025aff",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/warp_stability_kernels.py",
+      "destination": "simulation/dexonomy/sim/warp_stability_kernels.py",
+      "original_sha256": "b2e1b9275e301db1636535368b81e2421f544bceedaf6c38bb809260ed9168dc",
+      "current_sha256": "b2e1b9275e301db1636535368b81e2421f544bceedaf6c38bb809260ed9168dc",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/world_retirement.py",
+      "destination": "simulation/dexonomy/sim/world_retirement.py",
+      "original_sha256": "386f7d56be586abd4ce298a11ffe88c2f50f6e1d92cbf97c6fddac3ebbc1d070",
+      "current_sha256": "386f7d56be586abd4ce298a11ffe88c2f50f6e1d92cbf97c6fddac3ebbc1d070",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/sim/world_rows.py",
+      "destination": "simulation/dexonomy/sim/world_rows.py",
+      "original_sha256": "167e3d1d542f418e4d66f94ef75dcd4ab89d84cfae46d116b26bc21943d9f20e",
+      "current_sha256": "167e3d1d542f418e4d66f94ef75dcd4ab89d84cfae46d116b26bc21943d9f20e",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/tabletop_batcher.py",
+      "destination": "simulation/dexonomy/tabletop_batcher.py",
+      "original_sha256": "fe96b1e3947f4977e373a2ef024c98b77ae9f4fe19c3bb160b4926e25783146b",
+      "current_sha256": "fe96b1e3947f4977e373a2ef024c98b77ae9f4fe19c3bb160b4926e25783146b",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/tabletop_kernels.py",
+      "destination": "simulation/dexonomy/tabletop_kernels.py",
+      "original_sha256": "73ed1c50d947a7a037fba0fe614a7474d403f145a477b9a3a47eed96e66e3227",
+      "current_sha256": "73ed1c50d947a7a037fba0fe614a7474d403f145a477b9a3a47eed96e66e3227",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/tabletop_protocol.py",
+      "destination": "simulation/dexonomy/tabletop_protocol.py",
+      "original_sha256": "f16e56ec477e56643ad12f296ddd27da889d4ec9ae44bba725c1d17cdcd1b460",
+      "current_sha256": "f16e56ec477e56643ad12f296ddd27da889d4ec9ae44bba725c1d17cdcd1b460",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/tabletop_trajectory.py",
+      "destination": "simulation/dexonomy/tabletop_trajectory.py",
+      "original_sha256": "2826542cdfb939b6372d3f613720c1b8222acdf29c0d74e586ea8e4a8d03f60c",
+      "current_sha256": "2826542cdfb939b6372d3f613720c1b8222acdf29c0d74e586ea8e4a8d03f60c",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/tabletop_warp.py",
+      "destination": "simulation/dexonomy/tabletop_warp.py",
+      "original_sha256": "5b1aa5999eeac9ced0e769baf1c1d8b1e7adff5f43f8e1505d566e06b44a76ee",
+      "current_sha256": "5b1aa5999eeac9ced0e769baf1c1d8b1e7adff5f43f8e1505d566e06b44a76ee",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/upstream.py",
+      "destination": "simulation/dexonomy/upstream.py",
+      "original_sha256": "fe7f7cb91abef6159846934c1dcbf4105408c098075f596ef5b537fda1181782",
+      "current_sha256": "de76cfb21068fad66ac746f9149e78d6928139ee19bf02a4790f25c6af89f3fa",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/upstream_batch.py",
+      "destination": "simulation/dexonomy/upstream_batch.py",
+      "original_sha256": "428113564cd475c1f363a2fe80427d78cf98ba6f29d9fd22556b546534aa6f91",
+      "current_sha256": "428113564cd475c1f363a2fe80427d78cf98ba6f29d9fd22556b546534aa6f91",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/upstream_pipeline.py",
+      "destination": "simulation/dexonomy/upstream_pipeline.py",
+      "original_sha256": "fc7af8bca6061d63f22d28893d33d1e089d8429c0b070b2ebaa50cedfc5528b7",
+      "current_sha256": "abe52fcdeddea3913d06053e026dc9025cc644212e5fe853eef7fb16c0798e14",
+      "modified": true
+    },
+    {
+      "source": "dexonomy/upstream_stream.py",
+      "destination": "simulation/dexonomy/upstream_stream.py",
+      "original_sha256": "fc59153aba2232e7f7a71d24fdd474902cf725bb36712fd996536acefb71cc7f",
+      "current_sha256": "fc59153aba2232e7f7a71d24fdd474902cf725bb36712fd996536acefb71cc7f",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/util/__init__.py",
+      "destination": "simulation/dexonomy/util/__init__.py",
+      "original_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "current_sha256": "913849b5da31974fc6dee1d3e8e6f1913ea923f4df4c6aad8ca781fcfd44becf",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/util/cpu_slots.py",
+      "destination": "simulation/dexonomy/util/cpu_slots.py",
+      "original_sha256": "a2cbf3746b4d3fd67992073a2c1aeb61a73cef5f5ed83e1c7cb2c83d2139cf08",
+      "current_sha256": "a2cbf3746b4d3fd67992073a2c1aeb61a73cef5f5ed83e1c7cb2c83d2139cf08",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/util/file_util.py",
+      "destination": "simulation/dexonomy/util/file_util.py",
+      "original_sha256": "9d18cd1057d74771d26fcdf4451b4dddc813d52dbe7416c0c4a1fc004a0c4452",
+      "current_sha256": "9d18cd1057d74771d26fcdf4451b4dddc813d52dbe7416c0c4a1fc004a0c4452",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/util/np_util.py",
+      "destination": "simulation/dexonomy/util/np_util.py",
+      "original_sha256": "870fc7b856a4c147728e45c6a445220ba934bc622cc1afe746c84a7f8e5eeabb",
+      "current_sha256": "870fc7b856a4c147728e45c6a445220ba934bc622cc1afe746c84a7f8e5eeabb",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/util/scene_shm.py",
+      "destination": "simulation/dexonomy/util/scene_shm.py",
+      "original_sha256": "b7a5f44c0e746296acdf8e27aba0834a8e08695c42d009ee92a0a5738000156e",
+      "current_sha256": "b7a5f44c0e746296acdf8e27aba0834a8e08695c42d009ee92a0a5738000156e",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/util/torch_util.py",
+      "destination": "simulation/dexonomy/util/torch_util.py",
+      "original_sha256": "210b92a58fc2206ed642e0b0d536c39c9b6a759720b8d0a5c9a66990342b725f",
+      "current_sha256": "210b92a58fc2206ed642e0b0d536c39c9b6a759720b8d0a5c9a66990342b725f",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/util/traj_util.py",
+      "destination": "simulation/dexonomy/util/traj_util.py",
+      "original_sha256": "62864499d4bed2bb5ea8ac0962a62c15c7722eb26b5ceb48785e9a3352e9ca61",
+      "current_sha256": "62864499d4bed2bb5ea8ac0962a62c15c7722eb26b5ceb48785e9a3352e9ca61",
+      "modified": false
+    },
+    {
+      "source": "dexonomy/util/warp_util.py",
+      "destination": "simulation/dexonomy/util/warp_util.py",
+      "original_sha256": "8f0037c155d0bc7bbe9ac32a26327bdd02c801dfe372646ce88bd68dcc2a2584",
+      "current_sha256": "8f0037c155d0bc7bbe9ac32a26327bdd02c801dfe372646ce88bd68dcc2a2584",
+      "modified": false
+    },
+    {
+      "source": "examples/unified-night/floating.base.json",
+      "destination": "simulation/examples/unified-night/floating.base.json",
+      "original_sha256": "78ba7fc9ae75f03e418d904cb06507baffd9b0f75df893ac72b326b44bf1025b",
+      "current_sha256": "78ba7fc9ae75f03e418d904cb06507baffd9b0f75df893ac72b326b44bf1025b",
+      "modified": false
+    },
+    {
+      "source": "examples/unified-night/tabletop.base.json",
+      "destination": "simulation/examples/unified-night/tabletop.base.json",
+      "original_sha256": "7fbb2243275e5c81c79fb3ae5e3d5a907adb720eca0ade32bc6e29b431a01deb",
+      "current_sha256": "7fbb2243275e5c81c79fb3ae5e3d5a907adb720eca0ade32bc6e29b431a01deb",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/manage.py",
+      "destination": "simulation/scripts/grouped_production/manage.py",
+      "original_sha256": "aa3576bbf39df2b2e71a0d0676f4b74a8c94736e8f7609e4ea8601e177c28927",
+      "current_sha256": "aa3576bbf39df2b2e71a0d0676f4b74a8c94736e8f7609e4ea8601e177c28927",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_capacity_policy.py",
+      "destination": "simulation/scripts/grouped_production/night_capacity_policy.py",
+      "original_sha256": "06f7647d3b6c60234678cf123add09410596e5a2493c90755e29e6f3c89e670c",
+      "current_sha256": "06f7647d3b6c60234678cf123add09410596e5a2493c90755e29e6f3c89e670c",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_capacity_rank.py",
+      "destination": "simulation/scripts/grouped_production/night_capacity_rank.py",
+      "original_sha256": "7af8d1f4638b03a72a94faba96d3db9b1c0dac681d4ffe8656be7d237067c71f",
+      "current_sha256": "7af8d1f4638b03a72a94faba96d3db9b1c0dac681d4ffe8656be7d237067c71f",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_capacity_replay.py",
+      "destination": "simulation/scripts/grouped_production/night_capacity_replay.py",
+      "original_sha256": "2055db3aecc0201f915e43e64e2e3026015f7f8778d903b7eca6a2cd45cb490e",
+      "current_sha256": "9e143d78a2968565fa924c9723ae7950a2cf6906fa942e3bc8ce364f133bffe5",
+      "modified": true
+    },
+    {
+      "source": "scripts/grouped_production/night_checkpoint_identity.py",
+      "destination": "simulation/scripts/grouped_production/night_checkpoint_identity.py",
+      "original_sha256": "b9846d4c68598521c25c40d8c039065975130a3b8f4307864952d5bb7ceac7ac",
+      "current_sha256": "b9846d4c68598521c25c40d8c039065975130a3b8f4307864952d5bb7ceac7ac",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_config.py",
+      "destination": "simulation/scripts/grouped_production/night_config.py",
+      "original_sha256": "e6bed297a454e45d73b5ef71d3f9ccc86e28401096c02851691e1474cbf03cf5",
+      "current_sha256": "e6bed297a454e45d73b5ef71d3f9ccc86e28401096c02851691e1474cbf03cf5",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_configure.py",
+      "destination": "simulation/scripts/grouped_production/night_configure.py",
+      "original_sha256": "df081cfb87fac70165121bf6fe564ca9c917aa50b508c47158fc6cec0611232a",
+      "current_sha256": "df081cfb87fac70165121bf6fe564ca9c917aa50b508c47158fc6cec0611232a",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_inventory.py",
+      "destination": "simulation/scripts/grouped_production/night_inventory.py",
+      "original_sha256": "ab1c425457c186d4c061d7ad1d1d83aaed26bab959541bbbb3f61839d9e04d8c",
+      "current_sha256": "ab1c425457c186d4c061d7ad1d1d83aaed26bab959541bbbb3f61839d9e04d8c",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_schedule.py",
+      "destination": "simulation/scripts/grouped_production/night_schedule.py",
+      "original_sha256": "519b866d1090a380aa7995c05db7f2150761745f7c09c36256a05bc47a82f885",
+      "current_sha256": "519b866d1090a380aa7995c05db7f2150761745f7c09c36256a05bc47a82f885",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_stop.py",
+      "destination": "simulation/scripts/grouped_production/night_stop.py",
+      "original_sha256": "c17e0723eeb8c84c53a50be098596dd6ea8c99335fb44f0e9545a38120008d73",
+      "current_sha256": "c17e0723eeb8c84c53a50be098596dd6ea8c99335fb44f0e9545a38120008d73",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_templates.py",
+      "destination": "simulation/scripts/grouped_production/night_templates.py",
+      "original_sha256": "2daa2e41b424f0b74a6028944e50cec2e377f73c3bb45e69c50b35e9709396d1",
+      "current_sha256": "2daa2e41b424f0b74a6028944e50cec2e377f73c3bb45e69c50b35e9709396d1",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_transactions.py",
+      "destination": "simulation/scripts/grouped_production/night_transactions.py",
+      "original_sha256": "7d8bed3a5a38c5921f76051264901ff1fd9f8fae487175067a74a61e5bff0f60",
+      "current_sha256": "7d8bed3a5a38c5921f76051264901ff1fd9f8fae487175067a74a61e5bff0f60",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_verify.py",
+      "destination": "simulation/scripts/grouped_production/night_verify.py",
+      "original_sha256": "b4feaba8c9b991aaedd57154b17eeb6a1e3c74c7274e6c720a9c4ddffbc65ac5",
+      "current_sha256": "b4feaba8c9b991aaedd57154b17eeb6a1e3c74c7274e6c720a9c4ddffbc65ac5",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/night_worker.py",
+      "destination": "simulation/scripts/grouped_production/night_worker.py",
+      "original_sha256": "87f87037edb8fc6afacee9f943a9320877f55d4e654642f61001cb7f22f3ddb3",
+      "current_sha256": "87f87037edb8fc6afacee9f943a9320877f55d4e654642f61001cb7f22f3ddb3",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/pid_bootstrap.py",
+      "destination": "simulation/scripts/grouped_production/pid_bootstrap.py",
+      "original_sha256": "85bc2c6e088f29132f630592d6b297b8198af83ccd27adb57f0f50f63e8326d8",
+      "current_sha256": "a098c135d039b69b772b5d0d8338a2a121a04f8ce1e84157cadb42ff19eeb54c",
+      "modified": true
+    },
+    {
+      "source": "scripts/grouped_production/run.py",
+      "destination": "simulation/scripts/grouped_production/run.py",
+      "original_sha256": "bbb5f385774bd56ca5a9b31f994b0e58f8eb543085e2b53823b543babf98b930",
+      "current_sha256": "fb3d619f94f01906a4542208d53decbc2adb52e06c1d1225693e72e61dbd3cac",
+      "modified": true
+    },
+    {
+      "source": "scripts/grouped_production/test_night_adaptive_capacity.py",
+      "destination": "simulation/scripts/grouped_production/test_night_adaptive_capacity.py",
+      "original_sha256": "f4427d0535a69c5e0bd304366ec6bb63ee08e2e9b48144b8a79adba0a6b561d1",
+      "current_sha256": "f4427d0535a69c5e0bd304366ec6bb63ee08e2e9b48144b8a79adba0a6b561d1",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/test_night_capacity_policy.py",
+      "destination": "simulation/scripts/grouped_production/test_night_capacity_policy.py",
+      "original_sha256": "017a15f67c44a6f0819fca78487d5cc6360b7344bc6f3ad554c8ebb06d5e60cd",
+      "current_sha256": "017a15f67c44a6f0819fca78487d5cc6360b7344bc6f3ad554c8ebb06d5e60cd",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/test_night_config.py",
+      "destination": "simulation/scripts/grouped_production/test_night_config.py",
+      "original_sha256": "59d60d6f5e9dfe7e810b4d192533db5222cefc33bc6150a18176766cb03f20b4",
+      "current_sha256": "59d60d6f5e9dfe7e810b4d192533db5222cefc33bc6150a18176766cb03f20b4",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/test_night_configure.py",
+      "destination": "simulation/scripts/grouped_production/test_night_configure.py",
+      "original_sha256": "1f57cfce461dfcb83235fbc8be104a016e3e56ed4056965aa02196328820ae14",
+      "current_sha256": "1f57cfce461dfcb83235fbc8be104a016e3e56ed4056965aa02196328820ae14",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/test_night_identity.py",
+      "destination": "simulation/scripts/grouped_production/test_night_identity.py",
+      "original_sha256": "c4c46a5bbf0526754e11cc72096cef388c57de08f8e9c337f0467daf8fc21410",
+      "current_sha256": "c4c46a5bbf0526754e11cc72096cef388c57de08f8e9c337f0467daf8fc21410",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/test_night_schedule.py",
+      "destination": "simulation/scripts/grouped_production/test_night_schedule.py",
+      "original_sha256": "73be5912aa7ac057d522c813975723c62f5e896d073a37651f48683977710b43",
+      "current_sha256": "73be5912aa7ac057d522c813975723c62f5e896d073a37651f48683977710b43",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/test_night_templates.py",
+      "destination": "simulation/scripts/grouped_production/test_night_templates.py",
+      "original_sha256": "43731cfa07590e85cad7935f4096cb753858e50a46bcb0c54bc01c34ab17aae3",
+      "current_sha256": "43731cfa07590e85cad7935f4096cb753858e50a46bcb0c54bc01c34ab17aae3",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/test_night_worker_transactions.py",
+      "destination": "simulation/scripts/grouped_production/test_night_worker_transactions.py",
+      "original_sha256": "82846386754c9708cd9184ea80c5b24a4498648caeaf6ce8ee299b17c0c2a538",
+      "current_sha256": "82846386754c9708cd9184ea80c5b24a4498648caeaf6ce8ee299b17c0c2a538",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/test_pid_bootstrap.py",
+      "destination": "simulation/scripts/grouped_production/test_pid_bootstrap.py",
+      "original_sha256": "8c9b2dd990fc6b89cc47dfd600601e9fb35063f609f487f50afa3a5daa1e5742",
+      "current_sha256": "8c9b2dd990fc6b89cc47dfd600601e9fb35063f609f487f50afa3a5daa1e5742",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/test_tabletop_inventory.py",
+      "destination": "simulation/scripts/grouped_production/test_tabletop_inventory.py",
+      "original_sha256": "24725b3fe1b5a3f9824be9c97398033d398e61d213de2dbaff398c0015514b42",
+      "current_sha256": "24725b3fe1b5a3f9824be9c97398033d398e61d213de2dbaff398c0015514b42",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/vnext_stats.py",
+      "destination": "simulation/scripts/grouped_production/vnext_stats.py",
+      "original_sha256": "fc6388e2c9894ec933ce3082dd3c322e0cf54949e5ee2e29af205609bbd2ad06",
+      "current_sha256": "fc6388e2c9894ec933ce3082dd3c322e0cf54949e5ee2e29af205609bbd2ad06",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/vnext_verify.py",
+      "destination": "simulation/scripts/grouped_production/vnext_verify.py",
+      "original_sha256": "9a8ccec0ef2bece8eb57ec301e7743f40056d2aa1778d15d9f30cf621190383f",
+      "current_sha256": "9a8ccec0ef2bece8eb57ec301e7743f40056d2aa1778d15d9f30cf621190383f",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/fixtures/night_config_baseline.json",
+      "destination": "simulation/scripts/grouped_production/fixtures/night_config_baseline.json",
+      "original_sha256": "5ee43ff129f3920d95ac3a605cdea01102611d135b37197f01b25effb1526d98",
+      "current_sha256": "5ee43ff129f3920d95ac3a605cdea01102611d135b37197f01b25effb1526d98",
+      "modified": false
+    },
+    {
+      "source": "scripts/grouped_production/vnext_verify.py",
+      "destination": "simulation/scripts/grouped_production/vnext_verify.py",
+      "original_sha256": "9a8ccec0ef2bece8eb57ec301e7743f40056d2aa1778d15d9f30cf621190383f",
+      "current_sha256": "9a8ccec0ef2bece8eb57ec301e7743f40056d2aa1778d15d9f30cf621190383f",
+      "modified": false
+    }
+  ],
+  "new_modules": [
+    "dexgrasp/test/physics_input.py",
+    "dexgrasp/test/physics_report.py",
+    "simulation/dexonomy/prediction_eval.py",
+    "simulation/dexonomy/generation.py",
+    "simulation/dexonomy/preflight.py",
+    "simulation/scripts/grouped_production/prediction_worker.py"
+  ],
+  "boundary": "Only selected source/config files; no upstream Git history, assets, data, or local task briefs."
+}

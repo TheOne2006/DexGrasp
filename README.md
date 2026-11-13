@@ -18,6 +18,7 @@ DexGrasp/                         自有 Git 仓库
 ├── configs/                      FM、FlowMap、八卡训练、手模型模板与参考索引
 ├── tests/                        软件测试；合成夹具不用于研究结论
 ├── scripts/                      数据制作、关键点评估、八卡训练与软件检查
+├── simulation/                   独立安装的 Dexonomy 仿真、数据生成与物理评估
 ├── docs/                         model v1 架构（含原始输入）与 data 说明
 ├── licenses/                     第三方许可证
 └── .github/                      CI
@@ -365,3 +366,15 @@ weight decay=0、grad_clip=1、seed=42。每 5k 永久保留 checkpoint，结束
 恢复需保持冻结代码、配置、数据、软件环境和每组四卡不变。原始归档仍在 data/archives；本机 /var/tmp 训练表不是持久备份。
 冻结划分和打包元数据备份于外层 `data/sharpa_formal_20261111/`；`local_cache/` 指向实际训练表。
 面板复用工作区 site，读取 `outputs/sharpa_formal_20261111`，展示四组排队状态、实际 LR、loss、吞吐和 GPU 分配。
+
+## 预测物理评估与数据生成
+
+新增独立仿真环境和可直接调用的 Sharpa 评估入口，支持 Floating 六向与
+Tabletop Slide 后六向协议，以及有界单卡 Init → Refine → Eval / 恢复。
+参见 [接口、安装与验证边界](simulation/docs/generation-evaluation.md)。
+模型 checkpoint 必须匹配训练源码；IK 拟合成功不等于物理抓取成功。
+
+`simulation/` 保留独立 `dexonomy` 命名空间和依赖环境，避免仿真 NumPy 2 依赖进入训练环境。
+`test-physics --decoded decoded.jsonl --report physics.json` 校验 decoded SHA256 与候选身份，
+汇总 `dexgrasp-physics-result/v1`，保留异常和未测状态；旧 `test --verdicts` 接口保持不变。
+Data v1 的场景点云、射线 h 与单物体 h32 协议不可混用。

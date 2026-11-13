@@ -1,0 +1,8 @@
+# NOT_RUN on RTX5090. Install torch separately with the cu128 wheel index.
+# Keep physics versions unchanged; validate fixed inputs before accepting.
+torch==2.7.0
+mujoco==3.17.0
+mujoco-warp==3.17.0
+warp-lang==1.16.0
+numpy==2.2.6
+scipy==1.15.3

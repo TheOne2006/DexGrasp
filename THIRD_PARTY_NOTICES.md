@@ -54,3 +54,13 @@ object collision meshes retain the archived source mesh identity in manifests.
 with an absolute optimizer import and a local scalar helper for PyTorch 2.7.
 Source: https://github.com/pytorch/pytorch/blob/v2.9.0/torch/optim/_muon.py
 The full upstream copyright and license are in `licenses/PyTorch-LICENSE.txt`.
+
+## Optional Dexonomy simulation runtime
+
+`simulation/` is separately installed and derived from Dexonomy (Jiayi Chen,
+Yubin Ke, Lin Peng and He Wang), upstream d561ff9 and integration 9c220bd.
+See `simulation/NOTICE.md`, `simulation/SOURCES.json`, and the complete
+`simulation/licenses/CC-BY-NC-4.0.txt`. The noncommercial upstream terms are
+retained. `simulation/dexonomy/util/torch_util.py` also derives from PyTorch3D;
+its BSD license is in `simulation/licenses/PyTorch3D-BSD.txt`.
+Hand models, annotations, templates and object assets are not redistributed.

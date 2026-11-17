@@ -369,6 +369,19 @@ weight decay=0、grad_clip=1、seed=42。每 5k 永久保留 checkpoint，结束
 
 ## 预测物理评估与数据生成
 
+抓取执行协议以 [Floating / Tabletop 协议](simulation/docs/generation-evaluation.md#两个固定物理协议)
+及其 `simulation/dexonomy/prediction_eval.py` 入口为准。两套评估用途如下：
+
+| 入口 | 用途与边界 |
+| --- | --- |
+| `scripts/evaluate_physics.py` / `sharpa-single-pose-force-test-v1` | 历史单姿态诊断；没有 pregrasp/squeeze，移除桌面，结果不能替代完整抓取执行成功率 |
+| `dexonomy.prediction_eval` → `dexgrasp test-physics` | 显式提供完整控制轨迹和坐标变换，执行 Floating 六向或 Tabletop 抬升后六向测试，保留无效输入与模拟异常 |
+
+接入新入口不代表已有 checkpoint 已通过物理验收。必须先提供版本明确的
+pregrasp/squeeze 控制，核对手标定、场景资产、源码与 checkpoint 身份，再验证 GT 和
+预测候选；不能从旧单姿态报告换名得到新协议结果。IK 拟合成功不替代物理成功，
+与论文比较还须对齐数据划分、候选预算和执行协议。
+
 新增独立仿真环境和可直接调用的 Sharpa 评估入口，支持 Floating 六向与
 Tabletop Slide 后六向协议，以及有界单卡 Init → Refine → Eval / 恢复。
 参见 [接口、安装与验证边界](simulation/docs/generation-evaluation.md)。

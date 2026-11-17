@@ -26,9 +26,12 @@ dependencies = [
 
 [project.scripts]
 dexgrasp-generate = "dexonomy.generation:main"
+dexgrasp-diversity = "dexonomy.diversity.__main__:main"
 
 [tool.setuptools.packages.find]
 include = ["dexonomy*"]
 
 [tool.setuptools.package-data]
 dexonomy = ["config/*.yaml", "config/*.json", "config/hand/*.yaml", "config/op/*.yaml"]
+
+"dexonomy.diversity" = ["resources/*.json", "resources/*.txt"]

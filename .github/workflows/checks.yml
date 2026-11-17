@@ -33,3 +33,23 @@ jobs:
           python -m pip install numpy==1.26.4 h5py==3.16.0 scipy==1.15.3
       - name: Run unit checks (optimizer updates disabled)
         run: python -m unittest discover -s tests -v
+
+  diversity-cpu-checks:
+    runs-on: ubuntu-latest
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: simulation
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU diversity dependencies
+        run: python -m pip install numpy==2.2.6 scipy==1.15.3 mujoco==3.17.0 trimesh==4.5.3
+      - name: Check global diversity and native input contract
+        run: python -m unittest discover -s simulation/tests -p 'test_diversity*.py' -v

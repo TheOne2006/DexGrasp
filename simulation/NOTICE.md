@@ -32,3 +32,15 @@ This integration adds explicit prediction frame/joint/control contracts, CPU
 diagnostics and local bounded generation entry points. The fixed source map
 records original hashes; modified files are identified separately. PyTorch3D
 rotation utilities retain their BSD license in licenses/PyTorch3D-BSD.txt.
+
+The local `dexonomy.diversity` evaluator implements global pair-mean diversity.
+Its bundled `resources/sharpa21_v1.json` is a minimal kinematic mapping extracted
+from the team's `sharpa_21point_v1` package and the Sharpa URDF at commit
+`d323b371d02f4fc04a0873c19c5234cae6d803dd` of
+https://github.com/sharpa-robotics/sharpa-urdf-usd-xml. It retains source hashes,
+Copyright 2025 Sharpa Group, the upstream LICENSE/NOTICE, and Apache-2.0 text
+in that resource directory. These are project-defined diagnostic landmarks,
+not an official Sharpa 21-point standard or hardware calibration. Full hand
+models/meshes and object assets are still supplied separately. The frozen
+hand50 numerical profile is local project work; its source calibration hash
+and representation-transfer caveat are bundled with the evaluator.

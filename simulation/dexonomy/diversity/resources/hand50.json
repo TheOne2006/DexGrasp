@@ -1,0 +1,32 @@
+{
+  "schema": "dexonomy-frozen-hand50/v1",
+  "name": "hand50",
+  "feature_config": {
+    "eta_t": 0.5,
+    "theta0": 0.5235987755982988,
+    "ell_h": 0.02,
+    "fixed_ell_t": null,
+    "w_t": 0.0026744040293024793,
+    "w_R": 0.022772101424186664,
+    "w_h": 0.23440514780267566
+  },
+  "reference": {
+    "calibration_source_sha256": "553240932a43f87cb4fc323261b8461799ea83eb6866c0fb267d6de30271ba54",
+    "calibration_schema": "heldout-kernel-calibration/v1",
+    "reference_condition": "templates_15",
+    "calibration_keypoint_scheme": "sharpa_segment_landmarks_v1",
+    "calibration_keypoint_count": 20,
+    "mean_squared_distances": {
+      "translation": 93.47877032072951,
+      "rotation": 10.97834562314352,
+      "hand": 2.133058956627115
+    },
+    "aggregation_scope": "historical within-condition pair distances, conditions equally weighted per object, reference objects equally weighted",
+    "requested_reference_distance_shares": {
+      "translation": 0.25,
+      "rotation": 0.25,
+      "hand": 0.5
+    }
+  },
+  "definition": "Frozen hand50 numerical parameters from the earlier 20-point reference. No re-fit or compensation for the current 21 equally weighted points, and no fit to current inputs. Requested reference shares do not guarantee actual global distance or Q contribution shares."
+}

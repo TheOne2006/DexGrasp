@@ -18,7 +18,9 @@ geometry code here were implemented for this design.
 The design uses the keypoint representation and geometric decoding idea from
 [KPGrasp](https://arxiv.org/abs/2606.09314); this repository does not claim to
 reproduce its published experiments or a complete Flow Map Matching objective.
-No Sharpa assets or calibrated numeric keypoint mappings are redistributed.
+The training package does not redistribute full Sharpa models or meshes.
+The simulation diversity evaluator includes a minimal diagnostic keypoint
+mapping; see the source and license details below.
 
 `scripts/patches/minkowski-cuda12.patch` is a compatibility patch for the official
 [NVIDIA/MinkowskiEngine](https://github.com/NVIDIA/MinkowskiEngine) source at
@@ -63,4 +65,19 @@ See `simulation/NOTICE.md`, `simulation/SOURCES.json`, and the complete
 `simulation/licenses/CC-BY-NC-4.0.txt`. The noncommercial upstream terms are
 retained. `simulation/dexonomy/util/torch_util.py` also derives from PyTorch3D;
 its BSD license is in `simulation/licenses/PyTorch3D-BSD.txt`.
-Hand models, annotations, templates and object assets are not redistributed.
+Full hand models, annotation packages, templates and object assets are not
+redistributed. The minimal diversity landmark mapping is the exception
+documented below, with its source and license retained.
+
+## Sharpa diversity landmark mapping
+
+`simulation/dexonomy/diversity/resources/sharpa21_v1.json` contains the team's
+21 diagnostic landmarks and the kinematic offsets needed to use them with
+Dexonomy's Sharpa V2 model. It is extracted from `sharpa_21point_v1`, derived
+from [Sharpa's URDF](https://github.com/sharpa-robotics/sharpa-urdf-usd-xml) at
+`d323b371d02f4fc04a0873c19c5234cae6d803dd`. Source file SHA256 values are retained
+in the JSON. Copyright 2025 Sharpa Group; the original LICENSE and NOTICE
+and full Apache-2.0 text are retained beside that resource. See also
+[simulation attribution](simulation/NOTICE.md). This is a project-defined
+kinematic representation, not a manufacturer-defined 21-point standard,
+measured contact surface or hardware calibration. Full assets remain external.

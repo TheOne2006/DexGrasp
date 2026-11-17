@@ -385,8 +385,6 @@ pregrasp/squeeze 控制，核对手标定、场景资产、源码与 checkpoint 
 新增独立仿真环境和可直接调用的 Sharpa 评估入口，支持 Floating 六向与
 Tabletop Slide 后六向协议，以及有界单卡 Init → Refine → Eval / 恢复。
 参见 [接口、安装与验证边界](simulation/docs/generation-evaluation.md)。
-生成结果的多样性评估使用 `dexgrasp-diversity`：全局 pair、Sharpa 21 点、固定 hand50 参数，
-支持精确计算与随机 pair 估计；见 [使用说明](simulation/docs/diversity.md)。
 模型 checkpoint 必须匹配训练源码；IK 拟合成功不等于物理抓取成功。
 
 `simulation/` 保留独立 `dexonomy` 命名空间和依赖环境，避免仿真 NumPy 2 依赖进入训练环境。

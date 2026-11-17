@@ -5,10 +5,6 @@ bounded local Floating / Tabletop generation. It does not install into the
 training environment: its pinned NumPy 2 runtime conflicts with training's
 NumPy <2 constraint. See [usage and contracts](docs/generation-evaluation.md).
 
-Dataset diversity is available through `python -m dexonomy.diversity` or
-`dexgrasp-diversity`: global nonself pairs, Sharpa 21 landmarks, frozen hand50
-parameters, CPU only. See [diversity usage and definition](docs/diversity.md).
-
 ```bash
 python3.11 -m venv .venv-simulation
 .venv-simulation/bin/pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121

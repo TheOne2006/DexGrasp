@@ -89,37 +89,60 @@ def run(args):
             configure_execution(model, cfg)
             ddp = DDP(FMLossModule(model), device_ids=[0], broadcast_buffers=False, gradient_as_bucket_view=True)
             optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad), lr=.0002, fused=True)
-            if frozen:
+            if frozen and not args.synthetic_hdf5:
                 batch = fake_batch(mc.parent, args.batch, 42+rank)
                 if mc.parent.use_gap:
                     batch['condition']['h32'] = batch['condition'].pop('palm_gap')
                 batch['keypoints_gt'] = torch.randn(args.batch, 3, 21, 3,
                     generator=torch.Generator().manual_seed(42+rank)).pin_memory()
-            else:
+            elif not args.synthetic_hdf5:
                 batch = fake_batch(mc, args.batch, 42+rank)
             architecture = asdict(mc)
         loader = None
+        input_description = 'pinned synthetic sphere repeated; fresh FM noise/time'
         if args.synthetic_hdf5:
             if reference or mc.stages != 3:
                 raise ValueError('the paired synthetic HDF5 option requires a DataV2 model')
             cfg.update(dataset_root=args.synthetic_hdf5, dataset_format='data_v2', batch_size=args.batch,
                        accumulation=1, num_workers=args.workers)
-            loader = streaming_loader(cfg, model, world, rank, 0, args.warmup+args.steps)
-            host_stream = iter(loader)
+            if args.replay_hdf5_batch:
+                # Keep the same point distribution and H2D path as the HDF5 run.
+                cfg['num_workers'] = 0
+                fixture = streaming_loader(cfg, model, world, rank, 0, 1)
+                try:
+                    batch = next(iter(fixture))
+                finally:
+                    fixture.dataset.close()
+                input_description = 'first paired HDF5 batch repeated from pinned CPU memory'
+            else:
+                loader = streaming_loader(cfg, model, world, rank, 0, args.warmup+args.steps)
+                host_stream = iter(loader)
+                input_description = 'paired HDF5 with production sampler, workers and pinned batches'
         torch.manual_seed(42 + rank)
 
-        def updates(n):
+        timings = []
+        def updates(n, *, measure=False):
             loss_sum = torch.zeros((), device=local)
             batches = repeat(batch, n) if loader is None else islice(host_stream, n)
             for data in device_batches(batches, local, prefetch=not args.reference_execution):
+                if measure:
+                    events = [torch.cuda.Event(enable_timing=True) for _ in range(4)]
+                    events[0].record()
                 optimizer.zero_grad(set_to_none=True)
                 with torch.autocast('cuda', dtype=torch.bfloat16, enabled=not reference):
                     result = ddp(data)
                     loss = result['loss_fm'] if reference else result
+                if measure:
+                    events[1].record()
                 loss.backward()
+                if measure:
+                    events[2].record()
                 nn.utils.clip_grad_norm_(model.parameters(), 10. if reference else 1., error_if_nonfinite=True)
                 optimizer.step()
                 loss_sum += loss.detach()
+                if measure:
+                    events[3].record()
+                    timings.append(events)
             return loss_sum
 
         gpu_uuid = 'GPU-' + str(torch.cuda.get_device_properties(0).uuid)
@@ -129,7 +152,7 @@ def run(args):
         dist.barrier()
         torch.cuda.reset_peak_memory_stats()
         start = time.perf_counter()
-        loss_sum = updates(args.steps)
+        loss_sum = updates(args.steps, measure=args.phase_timings)
         torch.cuda.synchronize()
         seconds = time.perf_counter() - start
         peak = dict(rank=rank, gpu=os.environ['CUDA_VISIBLE_DEVICES'], seconds=seconds,
@@ -139,6 +162,11 @@ def run(args):
                     loss=float(loss_sum)/args.steps)
         monitor.close()
         peak.update(device_used_peak_MiB=monitor.peak/2**20, device_total_MiB=monitor.total/2**20)
+        if timings:
+            peak['mean_phase_ms'] = {
+                name: sum(row[i].elapsed_time(row[i+1]) for row in timings)/len(timings)
+                for i, name in enumerate(('forward', 'backward_ddp', 'clip_optimizer'))
+            }
         monitor = None
         all_peaks = [None]*world
         dist.all_gather_object(all_peaks, peak)
@@ -146,12 +174,13 @@ def run(args):
             report = dict(model=args.model, settings=architecture, batch_per_gpu=args.batch, global_batch=world*args.batch,
                           samples_per_second=world*args.batch*args.steps/max(p['seconds'] for p in all_peaks),
                           ranks=all_peaks, torch_version=str(torch.__version__), cuda=torch.version.cuda,
+                          allocator=torch.cuda.memory.get_allocator_backend(),
+                          allocator_config=os.environ.get('PYTORCH_ALLOC_CONF', os.environ.get('PYTORCH_CUDA_ALLOC_CONF')),
                           source=source_state(), host=platform.node(), nccl=torch.cuda.nccl.version(),
                           transport={k:os.environ.get(k) for k in ('NCCL_P2P_DISABLE', 'NCCL_CUMEM_ENABLE',
                                                                     'NCCL_CUMEM_HOST_ENABLE', 'NCCL_IB_DISABLE')},
                           settings_benchmark=vars(args), seed=42, precision='FP32' if reference else 'BF16 dense / FP32 sparse',
-                          input=('paired HDF5 with production sampler, workers and pinned batches' if loader is not None
-                                 else 'pinned synthetic sphere repeated; fresh FM noise/time'))
+                          input=input_description)
             path = Path(args.output)
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open('x') as f:
@@ -169,6 +198,8 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--model', required=True, help='Model-only or historical training JSON')
     p.add_argument('--synthetic-hdf5', help='Time the production stream from an existing synthetic DataV2 fixture')
+    p.add_argument('--replay-hdf5-batch', action='store_true', help='Repeat the first pinned HDF5 batch to isolate loading overhead')
+    p.add_argument('--phase-timings', action='store_true', help='Record CUDA events for each measured update phase')
     p.add_argument('--workers', type=int, default=2)
     p.add_argument('--sparse-mode', choices=('default','direct','copy','copy_hidden'), default='default')
     p.add_argument('--frozen-grasp')
@@ -184,4 +215,6 @@ if __name__ == '__main__':
     args = p.parse_args()
     if min(args.batch, args.warmup, args.steps) < 1:
         p.error('batch, warmup and steps must be positive')
+    if args.replay_hdf5_batch and not args.synthetic_hdf5:
+        p.error('--replay-hdf5-batch requires --synthetic-hdf5')
     run(args)

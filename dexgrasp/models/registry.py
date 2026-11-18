@@ -5,6 +5,7 @@ from typing import Callable
 from .config import ModelConfig
 from .execution import configure_keypoint_execution
 from .keypoint import KeypointModel
+from .frozen_residual import FrozenResidualConfig, FrozenResidualModel, sample_residual, configure_residual_execution
 from .sampling import sample_keypoints
 
 
@@ -19,6 +20,8 @@ class ModelBranch:
 
 
 MODEL_BRANCHES = {
+    'frozen_grasp_residual': ModelBranch(FrozenResidualConfig, FrozenResidualModel, sample_residual,
+                                         {'fm': 10}, requires_minkowski=True, configure=configure_residual_execution),
     'keypoint_flow': ModelBranch(ModelConfig, KeypointModel, sample_keypoints,
                                  {'fm': 10, 'flowmap': 1}, requires_minkowski=True,
                                  configure=configure_keypoint_execution),

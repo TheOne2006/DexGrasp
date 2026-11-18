@@ -1,0 +1,8 @@
+{
+  "family": "frozen_grasp_residual",
+  "grasp_model": {
+    "variant": "object_direction_adaln_h_less",
+    "self_attention_backend": "centered_fp32"
+  },
+  "grasp_steps": 20
+}

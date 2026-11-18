@@ -19,6 +19,7 @@ from ..models.registry import build_model, config_from_settings, model_branch, s
 from .objectives import fm_loss, flowmap_loss, evaluation
 from .optimizers import make_optimizer
 from .schedule import apply_learning_rate
+from .prefetch import device_batches, move_batch
 from .execution import configure_execution
 from .checkpoints import ARCHIVE_EVERY, atomic_checkpoint
 
@@ -45,14 +46,6 @@ def runtime_identity():
         if spec is not None and spec.origin:
             versions['minkowski_extension_sha256'] = sha256(spec.origin)
     return versions
-
-
-def move_batch(batch, device):
-    if torch.is_tensor(batch):
-        return batch.to(device, non_blocking=True)
-    if isinstance(batch, dict):
-        return {k: move_batch(v, device) for k, v in batch.items()}
-    return batch
 
 
 class ResumeBatchSampler(Sampler):
@@ -107,7 +100,7 @@ def plan(cfg):
         blockers.append('CUDA unavailable in this Python environment')
     if cfg['method'] == 'flowmap' and not Path(cfg['teacher_checkpoint']).is_file():
         blockers.append('frozen FM teacher checkpoint is missing')
-    if cfg.get('initialization') == 'checkpoint' and not Path(cfg['initial_checkpoint']).is_file():
+    if cfg.get('initialization') in ('checkpoint', 'frozen_grasp') and not Path(cfg['initial_checkpoint']).is_file():
         blockers.append('initial checkpoint is missing')
     return dict(status='blocked' if blockers else 'ready', training_started=False, blockers=blockers,
                 config=cfg, model=resolved, dataset=dataset,
@@ -141,7 +134,14 @@ def initialize_student(student, teacher):
 
 
 def initialize_checkpoint(model, path, identity, hand_hash):
-    state = torch.load(path, map_location='cpu', weights_only=False)
+    state = torch.load(path, map_location='cpu', weights_only=False, mmap=True)
+    if model.cfg.family == 'frozen_grasp_residual':
+        if (state.get('method') != 'fm' or state.get('step', 0) < 1 or state.get('schema') != 'dexgrasp-v1'
+                or config_from_settings(state['model_config']) != model.cfg.parent
+                or state.get('hand_spec_sha256') != hand_hash):
+            raise ValueError('frozen grasp checkpoint architecture, hand calibration or training step mismatch')
+        model.grasp.load_state_dict(state['model'])
+        return sha256(path)
     if (state.get('schema') != model.cfg.checkpoint_schema or state.get('method') != model.method
             or state.get('step', 0) < 1 or config_from_settings(state['model_config']) != model.cfg):
         raise ValueError('initial checkpoint method/variant/dimensions mismatch or no training steps')
@@ -235,7 +235,7 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=None):
     torch.manual_seed(cfg['seed'])
     model = build_model(mc, cfg['method'], encoder_factory=encoder_factory).to(device)
     initial_hash = None
-    if cfg.get('initialization') == 'checkpoint':
+    if cfg.get('initialization') in ('checkpoint', 'frozen_grasp'):
         initial_hash = initialize_checkpoint(model, cfg['initial_checkpoint'], identity, hand_hash)
     teacher = None
     teacher_hash = None
@@ -309,7 +309,7 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=None):
                           teacher_supervision_split='train' if teacher is not None else None)
         with (run_dir/'provenance.json').open('x') as stream:
             json.dump(provenance, stream, indent=2, allow_nan=False)
-    iterator = iter(train_loader)
+    iterator = device_batches(train_loader, device, prefetch=cfg.get('cuda_prefetch', False))
     train_mode(model, cfg)
     started = time.monotonic()
     try:
@@ -325,7 +325,7 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=None):
                 optimizer.zero_grad(set_to_none=True)
                 total = 0.
                 for _ in range(cfg['accumulation']):
-                    batch = move_batch(next(iterator), device)
+                    batch = next(iterator)
                     with autocast(cfg, device):
                         if cfg['method'] == 'fm':
                             loss = fm_loss(model, batch)

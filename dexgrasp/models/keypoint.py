@@ -73,7 +73,7 @@ class Attention(nn.Module):
 
 
 class ConditionalBlock(nn.Module):
-    def __init__(self, cfg, layer_index=0):
+    def __init__(self, cfg, layer_index=0, *, ffn_ratio=4):
         super().__init__()
         w = cfg.width
         branches = 2 if cfg.use_scene else 1
@@ -87,7 +87,7 @@ class ConditionalBlock(nn.Module):
         self.biases = nn.ModuleList(nn.Sequential(nn.Linear(2, 64), nn.SiLU(),
                                                  nn.Linear(64, cfg.heads))
                                    for _ in range(branches if self.conditions.geometry_bias else 0))
-        self.ffn = nn.Sequential(nn.Linear(w, 4*w), nn.GELU(), nn.Linear(4*w, w))
+        self.ffn = nn.Sequential(nn.Linear(w, ffn_ratio*w), nn.GELU(), nn.Linear(ffn_ratio*w, w))
         self.checkpoint_direction_bias = False
         self.bias_scale = cfg.geometry_bias_scale
         self.bias_repeats = cfg.stages if cfg.geometry_source == 'grasp' else 1
@@ -214,7 +214,7 @@ class KeypointModel(nn.Module):
         direction_embedding = self.direction_embedding(direction) if self.cfg.direction_adaln else None
         return EncodedCondition(tokens, centers, gap_embedding, direction, kv, direction_embedding)
 
-    def forward(self, state, time_start, condition, time_end=None):
+    def features(self, state, time_start, condition, time_end=None):
         if state.shape != (len(state), *self.cfg.state_shape) or time_start.shape != (len(state),):
             raise ValueError('invalid keypoint state or time shape')
         if self.method == 'fm' and time_end is not None:
@@ -240,6 +240,10 @@ class KeypointModel(nn.Module):
             x = block(x, global_condition, condition.tokens, geometry,
                       None if condition.kv is None else condition.kv[i],
                       condition.gap_embedding, condition.direction_embedding)
+        return x
+
+    def forward(self, state, time_start, condition, time_end=None):
+        x = self.features(state, time_start, condition, time_end)
         if self.stage_ids is None:
             value = self.head(x)
         else:

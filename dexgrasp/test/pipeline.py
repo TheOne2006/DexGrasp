@@ -72,6 +72,9 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
                         pin_memory=device.type == 'cuda', generator=torch.Generator().manual_seed(seed))
     torch.manual_seed(seed)
+    nfe = steps
+    if model.cfg.family == 'frozen_grasp_residual':
+        nfe = model.cfg.grasp_steps + 1 + 2*steps
     total_seconds = 0.
     try:
         with new_output(output) as temporary, h5py.File(temporary, 'w') as f:
@@ -82,8 +85,10 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
                            direction_conditioned='grasp_direction_cmd' in model.cfg.condition_keys,
                            checkpoint_sha256=sha256(checkpoint), dataset_root=str(Path(dataset_root).resolve()),
                            hand_spec_sha256=state['hand_spec_sha256'], hand_urdf_sha256=identity['hand_urdf_sha256'],
-                           steps=steps, candidates=candidates, seed=seed,
+                           steps=steps, candidates=candidates, seed=seed, nfe_per_candidate=nfe,
                            physical_success_evaluated=False)
+            if model.cfg.family == 'frozen_grasp_residual':
+                f.attrs.update(grasp_steps=model.cfg.grasp_steps, endpoint_feature_calls=1, steps_per_residual_head=steps)
             f.attrs['condition_override'] = json.dumps(dict(palm_gap_m=palm_gap_m,
                                         direction=None if direction is None else direction.tolist()))
             depth_field = 'h32_cmd' if paired else 'h'
@@ -134,7 +139,7 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
         dataset.close()
     return dict(output=str(output), method=model.method, model_variant=variant,
                 samples=len(dataset), candidates=candidates,
-                nfe_per_candidate=steps, encoding_and_generation_seconds=total_seconds,
+                nfe_per_candidate=nfe, encoding_and_generation_seconds=total_seconds,
                 note='Timing excludes SVD/IK, collision checks and physics; physical success is unmeasured.')
 
 

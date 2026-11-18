@@ -14,6 +14,18 @@ def evaluation(model):
         model.train(previous)
 
 
+def repeat_context(context, candidates):
+    if candidates == 1:
+        return context
+    def repeat(x):
+        return None if x is None else x.repeat_interleave(candidates, dim=0)
+    kv = None if context.kv is None else tuple(tuple(tuple(repeat(x) for x in branch)
+                                                for branch in block) for block in context.kv)
+    return EncodedCondition(tuple(map(repeat, context.tokens)), tuple(map(repeat, context.centers)),
+                            repeat(context.gap_embedding), repeat(context.direction), kv,
+                            repeat(context.direction_embedding))
+
+
 @torch.no_grad()
 def sample_keypoints(model, condition, *, steps, noise=None, cache_kv=True, candidates=1):
     if type(steps) is not int or steps < 1:
@@ -27,14 +39,7 @@ def sample_keypoints(model, condition, *, steps, noise=None, cache_kv=True, cand
         raise ValueError('invalid initial noise')
     with evaluation(model):
         context = model.encode(condition, cache_kv=cache_kv)
-        if candidates > 1:
-            repeat = lambda x: x.repeat_interleave(candidates, dim=0)
-            optional_repeat = lambda x: None if x is None else repeat(x)
-            kv = None if context.kv is None else tuple(tuple(tuple(repeat(x) for x in branch)
-                                                               for branch in block) for block in context.kv)
-            context = EncodedCondition(tuple(map(repeat, context.tokens)), tuple(map(repeat, context.centers)),
-                                       optional_repeat(context.gap_embedding), optional_repeat(context.direction), kv,
-                                       optional_repeat(context.direction_embedding))
+        context = repeat_context(context, candidates)
         for i in range(steps):
             a = torch.full((len(state),), i/steps, device=device)
             if model.method == 'fm':

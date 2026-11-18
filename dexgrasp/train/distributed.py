@@ -27,8 +27,9 @@ from ..models.registry import build_model
 from .objectives import fm_loss
 from .optimizers import make_optimizer
 from .schedule import apply_learning_rate
+from .prefetch import device_batches
 from .execution import configure_execution
-from .runner import atomic_checkpoint, autocast, initialize_checkpoint, runtime_identity, source_state, move_batch
+from .runner import atomic_checkpoint, autocast, initialize_checkpoint, runtime_identity, source_state
 from .checkpoints import ARCHIVE_EVERY
 from .recovery import validate_recovery
 
@@ -227,10 +228,10 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
         mc = model_config(cfg, hand.spec)
         random.seed(cfg['seed']); np.random.seed(cfg['seed']); torch.manual_seed(cfg['seed'])
         model = build_model(mc, 'fm').to(device)
-        if cfg['initialization'] not in ('random', 'checkpoint'):
+        if cfg['initialization'] not in ('random', 'checkpoint', 'frozen_grasp'):
             raise ValueError('DDP supports random or same-identity checkpoint initialization')
         initial_hash = (initialize_checkpoint(model, cfg['initial_checkpoint'], identity, hand_hash)
-                        if cfg['initialization'] == 'checkpoint' else None)
+                        if cfg['initialization'] in ('checkpoint', 'frozen_grasp') else None)
         # ME's batch norm wraps torch BatchNorm1d; recursive conversion synchronizes sparse feature statistics.
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
         optimizer = make_optimizer(model, cfg, fused=True)
@@ -270,7 +271,7 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
             sampler = GlobalBatchStream(len(cache['keypoints_gt']), cfg['batch_size'], world, rank, cfg['seed'])
         else:
             loader = streaming_loader(cfg, model, world, rank, start, stop_after or cfg['max_steps'])
-            batches = iter(loader)
+            batches = device_batches(loader, device, prefetch=cfg.get('cuda_prefetch', False))
         print(json.dumps(dict(rank=rank, phase='input_ready', data_loading=cfg['data_loading'])), flush=True)
         random.seed(cfg['seed']+rank*100003); np.random.seed(cfg['seed']+rank*100003); torch.manual_seed(cfg['seed']+rank*100003)
         if resumed is not None:
@@ -281,9 +282,9 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
             if not resume:
                 provenance = dict(config=cfg, model_config=asdict(mc), source=source, runtime=runtime,
                                   data_identity=identity, hand_spec=hand.spec, initial_checkpoint_sha256=initial_hash,
-                                  initialization=cfg['initialization'], trainable_parameters=sum(p.numel() for p in model.parameters()),
+                                  initialization=cfg['initialization'], trainable_parameters=sum(p.numel() for p in model.parameters() if p.requires_grad),
                                   recovery=recovery,
-                                  frozen_parameters=0, physical_success_evaluated=False,
+                                  frozen_parameters=sum(p.numel() for p in model.parameters() if not p.requires_grad), physical_success_evaluated=False,
                                   distributed=dict(world_size=world, backend='nccl', local_batch_size=cfg['batch_size'],
                                                    global_batch_size=global_batch, sync_batchnorm=True,
                                                    accumulation=cfg['accumulation'], gpu_input_cache=cache is not None, cached_fps=cache is not None, gradient_as_bucket_view=True,
@@ -305,7 +306,7 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
                 for micro in range(cfg['accumulation']):
                     cursor = (step-1)*cfg['accumulation']+micro
                     batch = (cached_batch(cache, sampler.indices(cursor)) if cache is not None
-                             else move_batch(next(batches), device))
+                             else next(batches))
                     sync = nullcontext() if micro == cfg['accumulation']-1 else ddp.no_sync()
                     with sync:
                         with autocast(cfg, device):

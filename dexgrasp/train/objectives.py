@@ -6,10 +6,12 @@ from ..models.registry import sample_model as sample_keypoints  # Historical sam
 
 def fm_pair(clean, *, noise=None, time=None):
     noise = torch.randn_like(clean) if noise is None else noise
-    time = torch.rand(len(clean), device=clean.device) if time is None else time
+    generated_time = time is None
+    if generated_time:
+        time = torch.rand(len(clean), device=clean.device)
     if noise.shape != clean.shape or time.shape != (len(clean),):
         raise ValueError('FM noise/time shape mismatch')
-    if not torch.isfinite(time).all() or ((time < 0) | (time > 1)).any():
+    if not generated_time and not ((time >= 0) & (time <= 1)).all():
         raise ValueError('FM time outside [0,1]')
     weight = time.view(-1, *([1] * (clean.ndim - 1)))
     return (1-weight)*noise + weight*clean, time, clean-noise
@@ -18,6 +20,8 @@ def fm_pair(clean, *, noise=None, time=None):
 def fm_loss(model, batch):
     if model.method != 'fm':
         raise ValueError('fm_loss requires an FM model')
+    if hasattr(model, 'training_loss'):
+        return model.training_loss(batch)
     clean = batch['keypoints_gt']
     if hasattr(model.cfg, 'training_state'):
         clean = model.cfg.training_state(clean)

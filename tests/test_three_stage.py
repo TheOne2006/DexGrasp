@@ -4,6 +4,7 @@ import json
 from itertools import product
 from pathlib import Path
 import tempfile
+import shutil
 import unittest
 from unittest.mock import patch
 
@@ -31,13 +32,17 @@ def model_for(variant='object_only', method='fm'):
     return KeypointModel(cfg, method, encoder_factory=FixtureEncoder)
 
 
-def paired_shard(root):
+def paired_shard(root, calibrated_hand=None):
     dataset_fixture(root, raw=True)
     spec_path = root/'hand/hand_spec.json'
-    spec = json.loads(spec_path.read_text())
-    basis = [[0, 0, 1], [1, 0, 0], [0, 1, 0]]
-    spec['official_from_grasp_rotation'] = basis
-    spec_path.write_text(json.dumps(spec))
+    if calibrated_hand is not None:
+        spec = json.loads(calibrated_hand.read_text())
+        shutil.copyfile(calibrated_hand, spec_path)
+        shutil.copyfile(calibrated_hand.parent/spec['urdf'], spec_path.parent/spec['urdf'])
+    else:
+        spec = json.loads(spec_path.read_text())
+        spec['official_from_grasp_rotation'] = [[0, 0, 1], [1, 0, 0], [0, 1, 0]]
+        spec_path.write_text(json.dumps(spec))
     hand = URDFHand(spec_path)
     rng = np.random.default_rng(124)
     # Four candidates sharing two observations, with distinct stage poses.
@@ -45,6 +50,8 @@ def paired_shard(root):
     rotations[:, 1] = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
     t = rng.uniform(0, .05, (4, 3, 3)).astype('f4')
     q = rng.uniform(-.03, .03, (4, 3, 22)).astype('f4')
+    if calibrated_hand is not None:
+        q = ((hand.lower + hand.upper)/2 + q * (hand.upper - hand.lower)).astype('f4')
     poses = np.array([[hand.world_keypoints(*stage) for stage in zip(r, p, j)]
                       for r, p, j in zip(rotations, t, q)], dtype='f4')
     (root/'shards').mkdir()
@@ -58,7 +65,7 @@ def paired_shard(root):
         g['observation_index'] = np.array([0, 0, 1, 1], dtype='i8')
         g['candidate_id'] = [b'a', b'b', b'c', b'd']
         g['R'], g['t'], g['q'], g['keypoints_gt'] = rotations, t, q, poses
-        g['grasp_direction_cmd'] = rotations[:, 1, :, 1]
+        g['grasp_direction_cmd'] = rotations[:, 1] @ np.asarray(spec['official_from_grasp_rotation'][2], dtype='f4')
         g['h32'] = np.full((4, 1), .02, dtype='f4')
     for split, ids in [('train', (0, 1)), ('test', (2, 3))]:
         (root/'splits'/f'{split}.jsonl').write_text(''.join(

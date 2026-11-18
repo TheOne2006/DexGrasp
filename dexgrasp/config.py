@@ -57,11 +57,13 @@ def load_config(path):
         if not isinstance(model_path, str) or not model_path:
             raise ValueError('model_config must be a model recipe path')
         raw['model'] = read_model_settings(path.parent / model_path)
-    allowed = set(DEFAULT_RUN) | {'model', 'dataset_root', 'hand_spec', 'run_dir',
+    allowed = set(DEFAULT_RUN) | {'cuda_prefetch', 'model', 'dataset_root', 'hand_spec', 'run_dir',
                                  'checkpoint_dir', 'teacher_checkpoint', 'initial_checkpoint', 'data_audit', 'official_test_root'}
     if set(raw) - allowed:
         raise ValueError(f'unknown config keys: {sorted(set(raw) - allowed)}')
     cfg = {**DEFAULT_RUN, **raw}
+    if type(cfg.get('cuda_prefetch', False)) is not bool:
+        raise ValueError('cuda_prefetch must be boolean')
     if cfg['lr_schedule'] not in ('constant', 'warmup_cosine'):
         raise ValueError('unsupported lr_schedule')
     if cfg['lr_schedule'] == 'warmup_cosine':
@@ -70,7 +72,7 @@ def load_config(path):
             raise ValueError('invalid warmup/cosine settings')
     if cfg['schema_version'] != 1 or cfg['method'] not in ('fm', 'flowmap'):
         raise ValueError('expected v1 fm or flowmap configuration')
-    if cfg['initialization'] not in ('random', 'fm_teacher', 'checkpoint'):
+    if cfg['initialization'] not in ('random', 'fm_teacher', 'checkpoint', 'frozen_grasp'):
         raise ValueError('initialization must be random, fm_teacher or checkpoint')
     if cfg['initialization'] == 'fm_teacher' and cfg['method'] != 'flowmap':
         raise ValueError('fm_teacher initialization is only for FlowMap')
@@ -133,7 +135,9 @@ def load_config(path):
     if teacher:
         cfg['teacher_checkpoint'] = str((path.parent / teacher).resolve())
     initial = cfg.get('initial_checkpoint')
-    if (cfg['initialization'] == 'checkpoint') != bool(initial):
+    if (model.get('family') == 'frozen_grasp_residual') != (cfg['initialization'] == 'frozen_grasp'):
+        raise ValueError('frozen residual training requires frozen_grasp initialization')
+    if (cfg['initialization'] in ('checkpoint', 'frozen_grasp')) != bool(initial):
         raise ValueError('checkpoint initialization requires initial_checkpoint and vice versa')
     if initial:
         cfg['initial_checkpoint'] = str((path.parent / initial).resolve())

@@ -39,7 +39,8 @@ def main():
                precision='bfloat16', batch_size=2, accumulation=2, cuda_prefetch=True,
                num_workers=1, max_steps=2, save_every=1, optimizer='adamw',
                lr=.0002, weight_decay=.01, lr_schedule='constant', seed=42,
-               fps_backend='triton', select_tokens_before_slice=True)
+               fps_backend='triton', select_tokens_before_slice=True,
+               compile_transformer=True, checkpoint_direction_bias=True)
     if a.frozen_grasp:
         cfg.update(initialization='frozen_grasp', initial_checkpoint=str(a.frozen_grasp.resolve()))
     config = out / 'recipe.json'

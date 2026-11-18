@@ -4,6 +4,54 @@ EPIC 的 Sharpa 21 点抓姿生成与评测代码。当前四个 200k Flow Match
 
 深度对照在 C 的配置上额外输入连续 `palm_gap`。仓库也保留原模型设计中的场景编码与 FlowMap 蒸馏入口。四模型冻结配置、物理控制及验收进度见[实验报告](../outputs/gsr_osr_200k/验收报告.md)。
 
+## DataV2 三帧生成
+
+2026-11-18 同步的飞书《模型架构 11.18》修订 121、《实验 11.25》修订 20 和《模型架构 残差小模型》修订 8 对应下面七种训练配置。DataV2 的每行保存同一候选的三帧绝对坐标，按 pregrasp、grasp、squeeze 排列。物体和三帧共用点云中心与 0.2 m 尺度，方向取 grasp 腕系的 +Zh，深度取米制 h32。正式训练使用按物体隔离的划分。
+
+| 运行 | 三帧训练终点 | 腕轴方向 | 深度 |
+|---|---|---|---|
+| A1 | 绝对坐标 | grasp 几何偏置 | 关闭 |
+| A2，同 C2 | 前后帧位移及 grasp 坐标 | grasp 几何偏置 | 关闭 |
+| B1 | 绝对坐标 | 方向 AdaLN | 关闭 |
+| B2，同 C1 | 前后帧位移及 grasp 坐标 | 方向 AdaLN | 关闭 |
+| D1 | 前后帧位移及 grasp 坐标 | 方向 AdaLN | h32 |
+| D2 | 前后帧位移及 grasp 坐标 | grasp 几何偏置 | h32 |
+
+六组使用 63-token 联合主干和三个速度头。每层的几何偏置由当次带噪的 grasp 帧计算，按关键点编号在三帧复用。残差组学习 `(pregrasp − grasp, grasp, squeeze − grasp)`，完成 FM 积分后加回本次生成的 grasp，再反归一化。C1 和 C2 分别链接到 B2 和 A2，共用权重和训练记录。早期四个编号配置保留其逐阶段几何偏置语义。[当前六组结构](configs/paired_1125/) · [历史四组结构](configs/three_stage_v2/)
+
+结构配置中的 `conditioning` 可以是所有 Transformer 层共用的对象，也可以是长度等于层数的数组。每层可独立设置 `direction_adaln`、`geometry_bias` 和 `depth`。关闭该层的 `adaln` 后使用普通 pre-LN 残差，时间和启用的深度以加法注入。方向 AdaLN 需要同层开启 `adaln`。
+
+第七组冻结已有单帧 FM 和物体编码器。训练时把真实 grasp 在 τ=1 送入冻结主干，取速度头之前的逐点特征。pregrasp 与 squeeze 各用自己的两层、256 维、4 头残差 FM，噪声、时间和参数独立。采样时物体只编码一次，先生成 grasp，再做一次终点前向，两路积分后的位移分别加回同一个 grasp。checkpoint 内含冻结权重及两路可训练权重。训练配置中设置 `initialization="frozen_grasp"` 和 `initial_checkpoint`，后者指向与手型标定及结构一致的单帧模型。本次软件验证使用 B_fixed 的第 200,000 步。[双路残差结构](configs/frozen_residual/B_fixed.json)
+
+训练配置用 `model_config` 引用结构文件，路径相对该训练配置。正式实验的全局 batch、预算和数据清单待登记。全局 batch 等于每卡微批 × 卡数 × 梯度累积步数。采样返回每个候选三帧米制关键点，`decode` 逐帧运行 SVD/IK，`test` 汇总几何诊断。[5090 训练模板](configs/train/three_stage_v2.template.json)
+
+### 四卡 5090 复现
+
+以下命令从仓库根目录执行。这台主机通过 PCIe 和主机共享内存归约 DDP 梯度。加速配置使用数据加载 worker、页锁定批次和独立 H2D stream，并启用 Triton FPS、稀疏特征索引合并、Transformer 编译和几何偏置激活重算。稀疏骨干、坐标和损失使用 FP32，联合模型保留 centered FP32 自注意力，稠密投影使用 BF16。梯度范数在参数更新前做有限值检查。
+
+```bash
+export CUDA_VISIBLE_DEVICES=0,1,2,3 OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1
+export NCCL_P2P_DISABLE=1 NCCL_CUMEM_ENABLE=0 NCCL_CUMEM_HOST_ENABLE=0 NCCL_IB_DISABLE=1
+export TORCHINDUCTOR_COMPILE_THREADS=2
+
+# 真实 DDP 更新、保存、第 2 步续训、采样及三帧 IK。每次选择新的 name。
+./scripts/python.sh scripts/smoke_paired.py --name example-D2 --model configs/paired_1125/D2.json
+./scripts/python.sh scripts/smoke_paired.py --name example-dual --model configs/frozen_residual/B_fixed.json \
+  --frozen-grasp ../checkpoints/recovery_20261113/B_fixed/step_200000.pt \
+  --hand-spec ../data/sharpa_formal_20261111/local_cache/hand/hand_spec.json
+
+# 四卡稳态吞吐与逐卡显存
+./scripts/python.sh -m torch.distributed.run --standalone --nproc-per-node=4 \
+  scripts/benchmark_fake.py --model configs/paired_1125/A2.json --batch 256 \
+  --compile --checkpoint-bias --warmup 3 --steps 12 --output ../outputs/example-A2-b256.json
+
+# 从指定微批开始搜索，默认精确到每卡一个候选
+./scripts/python.sh scripts/sweep_fake_batches.py --ranks 4 --start 1024 \
+  --model configs/paired_1125/A2.json --compile --checkpoint-bias --output-dir ../outputs/example-A2-capacity
+```
+
+`--model KPGrasp` 加载本地上游 Final_base 的 Shadow 28 点模型、FP32 和原始 Muon 优化器分组。需要在当前解释器可导入上游训练依赖，并用 `--kpgrasp-root` 指定可选的源码位置。双路残差测速的 `--frozen-grasp` 和 `--hand-spec` 与 smoke 相同。一次测速使用相同的一批合成球面点云反复做 H2D，每次重新采样 FM 噪声和时间，统计同步前后向、裁剪和真实优化器更新。按最慢 rank 的稳态墙钟计算整机吞吐，记录 PyTorch 峰值和每 40 ms 采样的整卡显存。合成 HDF5 读盘、保存及 IK 通过另一条 smoke 命令验证。
+
 ## 文件夹职责
 
 ```text

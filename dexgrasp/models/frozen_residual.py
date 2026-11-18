@@ -112,8 +112,17 @@ class FrozenResidualModel(nn.Module):
         return (losses[0] + losses[1]) * .5
 
 
+def integrate_residual(flow, state, grasp, hidden, tokens, steps, cache_kv):
+    features = flow.prepare(hidden, tokens, cache_kv)
+    for i in range(steps):
+        time = grasp.new_full((len(grasp),), i/steps)
+        state = state + flow(state, time, grasp, features).float()/steps
+    return state
+
+
 @torch.no_grad()
-def sample_residual(model, condition, *, steps, candidates=1, noise=None, cache_kv=True):
+def sample_residual(model, condition, *, steps, candidates=1, noise=None, cache_kv=True,
+                    parallel_branches=True):
     if any(type(i) is not int or i < 1 for i in (steps, candidates)):
         raise ValueError('positive integer steps and candidates required')
     points = condition['object_points']
@@ -130,12 +139,23 @@ def sample_residual(model, condition, *, steps, candidates=1, noise=None, cache_
             t = grasp.new_full((len(grasp),), i/n)
             grasp = grasp + model.grasp(grasp, t, context).float()/n
         hidden = model.grasp.features(grasp, grasp.new_ones(len(grasp)), context)
-        pre_context = model.pregrasp.prepare(hidden, context.tokens[0], cache_kv)
-        squeeze_context = model.squeeze.prepare(hidden, context.tokens[0], cache_kv)
-        for i in range(steps):
-            t = grasp.new_full((len(grasp),), i/steps)
-            pre = pre + model.pregrasp(pre, t, grasp, pre_context).float()/steps
-            squeeze = squeeze + model.squeeze(squeeze, t, grasp, squeeze_context).float()/steps
+        args = (grasp, hidden, context.tokens[0], steps, cache_kv)
+        if parallel_branches and grasp.is_cuda:
+            # Both branches read the same completed anchor and hidden features.
+            # All side-stream use finishes before the caller can recycle those tensors.
+            current = torch.cuda.current_stream(grasp.device)
+            side = torch.cuda.Stream(device=grasp.device)
+            side.wait_stream(current)
+            try:
+                with torch.cuda.stream(side):
+                    squeeze = integrate_residual(model.squeeze, squeeze, *args)
+                pre = integrate_residual(model.pregrasp, pre, *args)
+            finally:
+                current.wait_stream(side)
+            squeeze.record_stream(current)
+        else:
+            pre = integrate_residual(model.pregrasp, pre, *args)
+            squeeze = integrate_residual(model.squeeze, squeeze, *args)
     poses = torch.stack((grasp + pre, grasp, grasp + squeeze), dim=1)
     if not torch.isfinite(poses).all():
         raise FloatingPointError('nonfinite frozen residual output')

@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch
 
@@ -40,3 +41,16 @@ class FrozenResidualTests(unittest.TestCase):
         other = sample_model(model, c, steps=2, candidates=2, noise=changed, cache_kv=False)
         torch.testing.assert_close(other[:, 1:], poses[:, 1:], rtol=1e-5, atol=2e-6)
         self.assertFalse(torch.allclose(other[:, 0], poses[:, 0]))
+
+    @unittest.skipUnless(os.environ.get('DEXGRASP_GPU_TESTS') == '1' and torch.cuda.is_available(),
+                         'explicit GPU regression requested')
+    def test_independent_cuda_streams_match_serial_integration(self):
+        cfg = FrozenResidualConfig(grasp_model=dict(width=32, heads=4, tokens=8, depth=2,
+                                   backbone_channels=16, variant='object_direction_adaln_h_less'), grasp_steps=2)
+        model = FrozenResidualModel(cfg, encoder_factory=FixtureEncoder).cuda().eval()
+        c = condition(device='cuda')
+        noise = torch.randn(4, 3, 21, 3, device='cuda')
+        with torch.autocast('cuda', dtype=torch.bfloat16):
+            serial = sample_model(model, c, steps=3, candidates=2, noise=noise, parallel_branches=False)
+            concurrent = sample_model(model, c, steps=3, candidates=2, noise=noise, parallel_branches=True)
+        torch.testing.assert_close(concurrent, serial)

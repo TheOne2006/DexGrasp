@@ -76,15 +76,16 @@ class ExecutionTests(unittest.TestCase):
                 torch.testing.assert_close(q.grad, p.grad, rtol=3e-4, atol=2e-5)
 
     def test_bfloat16_compilation_and_recompute_preserve_numerics(self):
-        for variant in ('object_only_h_less', 'object_direction_adaln_h_less'):
-            with self.subTest(variant=variant):
-                cfg = replace(small_config(), variant=variant)
+        for variant, stages in ((v, n) for v in ('object_only_h_less', 'object_direction_adaln_h_less') for n in (1, 3)):
+            with self.subTest(variant=variant, stages=stages):
+                cfg = replace(small_config(), variant=variant, stages=stages, geometry_source='grasp',
+                              self_attention_backend='centered_fp32' if stages == 3 else 'auto')
                 torch.manual_seed(71)
                 eager = ConditionalBlock(cfg).cuda()
                 compiled = copy.deepcopy(eager)
                 compiled.checkpoint_direction_bias = True
                 compiled.compile(fullgraph=True, dynamic=False)
-                x = torch.randn(2, 21, cfg.width, device='cuda')
+                x = torch.randn(2, 21*stages, cfg.width, device='cuda')
                 condition = torch.randn(2, cfg.width, device='cuda')
                 tokens = (torch.randn(2, cfg.tokens, cfg.width, device='cuda'),)
                 geometry = () if cfg.direction_adaln else (torch.randn(2, 21, cfg.tokens, 2, device='cuda'),)

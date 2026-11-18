@@ -6,7 +6,7 @@ Example: CUDA_VISIBLE_DEVICES=0,1,2,3 ./scripts/python.sh -m torch.distributed.r
 """
 import argparse
 from dataclasses import asdict
-from itertools import repeat
+from itertools import islice, repeat
 import json
 import os
 from pathlib import Path
@@ -29,7 +29,7 @@ from device_memory import DeviceMemory
 from dexgrasp.config import DEFAULT_RUN
 from dexgrasp.models.config import ModelConfig
 from dexgrasp.models.registry import build_model, config_from_settings
-from dexgrasp.train.distributed import FMLossModule
+from dexgrasp.train.distributed import FMLossModule, streaming_loader
 from dexgrasp.train.execution import configure_execution
 from dexgrasp.train.prefetch import device_batches
 from dexgrasp.train.runner import initialize_checkpoint, source_state
@@ -83,7 +83,7 @@ def run(args):
             model = nn.SyncBatchNorm.convert_sync_batchnorm(build_model(mc, 'fm')).to(local)
             if frozen:
                 initialize_checkpoint(model, args.frozen_grasp, None, sha256(args.hand_spec))
-            cfg = dict(DEFAULT_RUN, fps_backend='torch' if args.reference_execution else 'triton',
+            cfg = dict(DEFAULT_RUN, sparse_convolution_mode=args.sparse_mode, fps_backend='torch' if args.reference_execution else 'triton',
                        select_tokens_before_slice=not args.reference_execution, compile_transformer=args.compile,
                        checkpoint_direction_bias=args.checkpoint_bias)
             configure_execution(model, cfg)
@@ -98,11 +98,20 @@ def run(args):
             else:
                 batch = fake_batch(mc, args.batch, 42+rank)
             architecture = asdict(mc)
+        loader = None
+        if args.synthetic_hdf5:
+            if reference or mc.stages != 3:
+                raise ValueError('the paired synthetic HDF5 option requires a DataV2 model')
+            cfg.update(dataset_root=args.synthetic_hdf5, dataset_format='data_v2', batch_size=args.batch,
+                       accumulation=1, num_workers=args.workers)
+            loader = streaming_loader(cfg, model, world, rank, 0, args.warmup+args.steps)
+            host_stream = iter(loader)
         torch.manual_seed(42 + rank)
 
         def updates(n):
             loss_sum = torch.zeros((), device=local)
-            for data in device_batches(repeat(batch, n), local, prefetch=not args.reference_execution):
+            batches = repeat(batch, n) if loader is None else islice(host_stream, n)
+            for data in device_batches(batches, local, prefetch=not args.reference_execution):
                 optimizer.zero_grad(set_to_none=True)
                 with torch.autocast('cuda', dtype=torch.bfloat16, enabled=not reference):
                     result = ddp(data)
@@ -141,7 +150,8 @@ def run(args):
                           transport={k:os.environ.get(k) for k in ('NCCL_P2P_DISABLE', 'NCCL_CUMEM_ENABLE',
                                                                     'NCCL_CUMEM_HOST_ENABLE', 'NCCL_IB_DISABLE')},
                           settings_benchmark=vars(args), seed=42, precision='FP32' if reference else 'BF16 dense / FP32 sparse',
-                          input='pinned synthetic sphere, one observation per candidate, repeated; fresh FM noise/time')
+                          input=('paired HDF5 with production sampler, workers and pinned batches' if loader is not None
+                                 else 'pinned synthetic sphere repeated; fresh FM noise/time'))
             path = Path(args.output)
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open('x') as f:
@@ -150,12 +160,17 @@ def run(args):
     finally:
         if 'monitor' in locals() and monitor is not None:
             monitor.close()
+        if 'loader' in locals() and loader is not None:
+            loader.dataset.close()
         dist.destroy_process_group()
 
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--model', required=True, help='Model-only or historical training JSON')
+    p.add_argument('--synthetic-hdf5', help='Time the production stream from an existing synthetic DataV2 fixture')
+    p.add_argument('--workers', type=int, default=2)
+    p.add_argument('--sparse-mode', choices=('default','direct','copy','copy_hidden'), default='default')
     p.add_argument('--frozen-grasp')
     p.add_argument('--hand-spec')
     p.add_argument('--kpgrasp-root', default=str(ROOT.parent/'reference/KPGrasp'))

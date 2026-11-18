@@ -12,8 +12,12 @@ def configure_keypoint_execution(model, cfg=None):
     configure_attention_precision(model)
     if cfg is None:
         return
-    for block in model.blocks:
-        block.checkpoint_direction_bias = cfg['checkpoint_direction_bias']
+    count = cfg.get('checkpoint_transformer_blocks', 0)
+    if type(count) is not int or not 0 <= count <= len(model.blocks):
+        raise ValueError('checkpoint_transformer_blocks must be between zero and the model depth')
+    model.checkpoint_transformer_blocks = count
+    for i, block in enumerate(model.blocks):
+        block.checkpoint_direction_bias = i >= count and cfg['checkpoint_direction_bias']
     for encoder in (model.object_encoder, model.scene_encoder):
         if encoder is not None:
             encoder.fps_backend = cfg['fps_backend']

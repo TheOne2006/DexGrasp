@@ -57,7 +57,7 @@ def load_config(path):
         if not isinstance(model_path, str) or not model_path:
             raise ValueError('model_config must be a model recipe path')
         raw['model'] = read_model_settings(path.parent / model_path)
-    allowed = set(DEFAULT_RUN) | {'cuda_prefetch', 'model', 'dataset_root', 'hand_spec', 'run_dir',
+    allowed = set(DEFAULT_RUN) | {'cuda_prefetch', 'checkpoint_transformer_blocks', 'model', 'dataset_root', 'hand_spec', 'run_dir',
                                  'checkpoint_dir', 'teacher_checkpoint', 'initial_checkpoint', 'data_audit', 'official_test_root'}
     if set(raw) - allowed:
         raise ValueError(f'unknown config keys: {sorted(set(raw) - allowed)}')
@@ -113,6 +113,11 @@ def load_config(path):
         raise ValueError('unsupported precision or ODE solver')
     model = cfg.get('model', {})
     branch = model_branch(model.get('family', 'keypoint_flow'))
+    blocks = cfg.get('checkpoint_transformer_blocks', 0)
+    if type(blocks) is not int or blocks < 0:
+        raise ValueError('checkpoint_transformer_blocks must be a nonnegative integer')
+    if blocks and (branch.config_type is not ModelConfig or blocks > model.get('depth', ModelConfig.depth)):
+        raise ValueError('checkpoint_transformer_blocks requires a trainable keypoint Transformer of sufficient depth')
     if set(model) - {f.name for f in fields(branch.config_type)}:
         raise ValueError('unknown model config keys')
     if cfg['method'] not in branch.default_steps:

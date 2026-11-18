@@ -86,6 +86,10 @@ def run(args):
             cfg = dict(DEFAULT_RUN, sparse_convolution_mode=args.sparse_mode, fps_backend='torch' if args.reference_execution else 'triton',
                        select_tokens_before_slice=not args.reference_execution, compile_transformer=args.compile,
                        checkpoint_direction_bias=args.checkpoint_bias)
+            if args.checkpoint_blocks:
+                if frozen:
+                    raise ValueError('block recomputation requires a trainable keypoint Transformer')
+                cfg['checkpoint_transformer_blocks'] = args.checkpoint_blocks
             configure_execution(model, cfg)
             ddp = DDP(FMLossModule(model), device_ids=[0], broadcast_buffers=False, gradient_as_bucket_view=True)
             optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad), lr=.0002, fused=True)
@@ -211,10 +215,13 @@ if __name__ == '__main__':
     p.add_argument('--output', required=True)
     p.add_argument('--compile', action='store_true')
     p.add_argument('--checkpoint-bias', action='store_true')
+    p.add_argument('--checkpoint-blocks', type=int, default=0, help='Recompute this many leading Transformer blocks in backward')
     p.add_argument('--reference-execution', action='store_true')
     args = p.parse_args()
     if min(args.batch, args.warmup, args.steps) < 1:
         p.error('batch, warmup and steps must be positive')
     if args.replay_hdf5_batch and not args.synthetic_hdf5:
         p.error('--replay-hdf5-batch requires --synthetic-hdf5')
+    if args.model == 'KPGrasp' and args.checkpoint_blocks:
+        p.error('--checkpoint-blocks requires a DexGrasp keypoint model')
     run(args)

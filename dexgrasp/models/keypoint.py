@@ -141,6 +141,16 @@ class EncodedCondition:
     direction_embedding: torch.Tensor | None = None
 
 
+def recompute_block(block, x, time, tokens, geometry, gap, direction):
+    # Reentrant checkpointing records gradients for top-level tensor arguments.
+    # Keep both encoder memories and any differentiable geometry in that list.
+    branches = len(tokens)
+    def forward(x, time, gap, direction, *memory):
+        return block(x, time, memory[:branches], memory[branches:], None, gap, direction)
+    return checkpoint(forward, x, time, gap, direction, *tokens, *geometry,
+                      use_reentrant=True, preserve_rng_state=False)
+
+
 class KeypointModel(nn.Module):
     def __init__(self, cfg, method='fm', *, encoder_factory=GeometryEncoder):
         super().__init__()
@@ -158,6 +168,7 @@ class KeypointModel(nn.Module):
         self.ids = nn.Embedding(cfg.keypoints, cfg.width)
         self.stage_ids = nn.Embedding(cfg.stages, cfg.width) if cfg.stages == 3 else None
         self.blocks = nn.ModuleList(ConditionalBlock(cfg, i) for i in range(cfg.depth))
+        self.checkpoint_transformer_blocks = 0
         heads = [nn.Sequential(nn.LayerNorm(cfg.width), nn.Linear(cfg.width, 3)) for _ in range(cfg.stages)]
         self.head = heads[0] if cfg.stages == 1 else nn.ModuleList(heads)
 
@@ -237,9 +248,14 @@ class KeypointModel(nn.Module):
         geometry = (tuple(direction_geometry(positions, c, condition.direction) for c in condition.centers)
                     if self.cfg.geometry_bias else ())
         for i, block in enumerate(self.blocks):
-            x = block(x, global_condition, condition.tokens, geometry,
-                      None if condition.kv is None else condition.kv[i],
-                      condition.gap_embedding, condition.direction_embedding)
+            if (i < self.checkpoint_transformer_blocks and self.training and torch.is_grad_enabled()
+                    and condition.kv is None):
+                x = recompute_block(block, x, global_condition, condition.tokens, geometry,
+                                    condition.gap_embedding, condition.direction_embedding)
+            else:
+                x = block(x, global_condition, condition.tokens, geometry,
+                          None if condition.kv is None else condition.kv[i],
+                          condition.gap_embedding, condition.direction_embedding)
         return x
 
     def forward(self, state, time_start, condition, time_end=None):

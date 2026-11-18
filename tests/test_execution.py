@@ -8,7 +8,56 @@ from dexgrasp.config import DEFAULT_RUN
 from dexgrasp.models.encoders import farthest_point_indices
 from dexgrasp.models.keypoint import ConditionalBlock, KeypointModel
 from dexgrasp.train.execution import configure_execution
-from helpers import small_config, FixtureEncoder
+from helpers import condition, small_config, FixtureEncoder
+
+
+class RematerializedTransformerTests(unittest.TestCase):
+    def check_model(self, device):
+        torch.manual_seed(71)
+        settings = replace(small_config(), variant=None, stages=3, geometry_source='grasp',
+                           self_attention_backend='centered_fp32',
+                           conditioning=dict(geometry_bias=True, depth=True, direction_adaln=True))
+        gold = KeypointModel(settings, encoder_factory=FixtureEncoder).to(device)
+        standard, recomputed = copy.deepcopy(gold), copy.deepcopy(gold)
+        execution = dict(DEFAULT_RUN, checkpoint_direction_bias=True, compile_transformer=device == 'cuda')
+        configure_execution(standard, execution)
+        configure_execution(recomputed, dict(execution, checkpoint_transformer_blocks=settings.depth))
+        inputs = condition(device=device)
+        inputs['h32'] = inputs['palm_gap']
+        state = torch.randn(2, 3, 21, 3, device=device)
+        time = torch.tensor([.2, .6], device=device)
+        def evaluate(model, mixed):
+            with torch.autocast(device, enabled=mixed, dtype=torch.bfloat16):
+                output = model(state, time, model.encode(inputs))
+            output.float().square().mean().backward()
+            groups = {}
+            for name, parameter in model.named_parameters():
+                self.assertIsNotNone(parameter.grad, name)
+                groups.setdefault(name.split('.')[0], []).append(parameter.grad.detach().float().flatten())
+            return dict(output=output.detach().float(), **{k: torch.cat(v) for k,v in groups.items()})
+        fp32 = evaluate(gold, False)
+        ordinary = evaluate(standard, device == 'cuda')
+        actual = evaluate(recomputed, device == 'cuda')
+        for key in fp32:
+            if device == 'cpu':
+                torch.testing.assert_close(actual[key], ordinary[key], atol=1e-7, rtol=1e-5, msg=key)
+            else:
+                # Apply the existing two-percent BF16 norm error budget to both paths and
+                # compare their outputs and gradients, including the shared encoder.
+                bound = .02*fp32[key].norm().item()+1e-6
+                for left, right in ((ordinary, fp32), (actual, fp32), (actual, ordinary)):
+                    self.assertLessEqual((left[key]-right[key]).norm().item(), bound, key)
+
+    def test_cpu_preserves_outputs_and_gradients(self):
+        self.check_model('cpu')
+
+    @unittest.skipUnless(os.environ.get('DEXGRASP_GPU_TESTS') == '1' and torch.cuda.is_available(),
+                         'explicit GPU checks required')
+    def test_compiled_bf16_against_fp32(self):
+        # Other tests compile different model shapes in this same interpreter.
+        torch.compiler.reset()
+        self.addCleanup(torch.compiler.reset)
+        self.check_model('cuda')
 
 
 @unittest.skipUnless(os.environ.get('DEXGRASP_GPU_TESTS') == '1' and torch.cuda.is_available(),

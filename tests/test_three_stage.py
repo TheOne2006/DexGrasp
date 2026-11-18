@@ -76,11 +76,11 @@ class ThreeStageModelTests(unittest.TestCase):
             cfg = replace(cfg, width=32, depth=1, heads=4, tokens=8, backbone_channels=16)
             model = KeypointModel(cfg, encoder_factory=FixtureEncoder)
             name = path.stem
-            self.assertEqual(cfg.target, 'grasp' if name == 'A1' else 'residual' if name[1] == '2' else 'absolute')
+            self.assertEqual(cfg.target, 'absolute' if name in ('A1', 'B1') else 'residual')
             self.assertEqual((cfg.direction_adaln, cfg.geometry_bias, cfg.use_gap),
-                             (name[0] != 'A', name[0] != 'B', name[0] == 'D'))
+                             (name in ('B1','B2','C1','D1'), name in ('A1','A2','C2','D2'), name[0] == 'D'))
             state = cfg.training_state(absolute)
-            torch.testing.assert_close(cfg.absolute_state(state), absolute[:, 1] if name == 'A1' else absolute)
+            torch.testing.assert_close(cfg.absolute_state(state), absolute)
             if name[1] == '2':
                 torch.testing.assert_close(state[:, 0], absolute[:, 0] - absolute[:, 1])
             raw = dict(condition(), h32=torch.full((2, 1), .02))

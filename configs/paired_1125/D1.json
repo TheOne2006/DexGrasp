@@ -13,10 +13,10 @@
   "conditioning": {
     "adaln": true,
     "direction_adaln": true,
-    "geometry_bias": true,
+    "geometry_bias": false,
     "depth": true
   },
-  "target": "absolute",
+  "target": "residual",
   "geometry_source": "grasp",
   "geometry_bias_scale": 1.0
 }

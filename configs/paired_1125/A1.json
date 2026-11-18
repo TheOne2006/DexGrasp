@@ -8,7 +8,7 @@
   "keypoints": 21,
   "coord_scale_m": 0.2,
   "voxel_size_m": 0.005,
-  "stages": 1,
+  "stages": 3,
   "self_attention_backend": "centered_fp32",
   "conditioning": {
     "adaln": true,
@@ -16,7 +16,7 @@
     "geometry_bias": true,
     "depth": false
   },
-  "target": "grasp",
+  "target": "absolute",
   "geometry_source": "grasp",
   "geometry_bias_scale": 1.0
 }

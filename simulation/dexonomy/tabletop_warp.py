@@ -14,8 +14,10 @@ from dexonomy import tabletop_kernels as k
 from dexonomy.sim.eval_workspace import EvalWorkspace, eval_allocation
 
 class WarpFactory:
+    backend = "mujoco-warp-" + mjw.__version__
     def __init__(self,hosts,capacities=None):
-        if mujoco.__version__!='3.17.0' or mjw.__version__!='3.17.0':raise ValueError('requires pinned MuJoCo/MJWarp3.17.0')
+        from .preflight import require_mixed_warp
+        require_mixed_warp()
         self.capacities=capacities or {}
         self.bank=MixedModelBank(hosts,device='cuda:0')
         self.workspace=EvalWorkspace('tabletop-slide-fc/v1')
@@ -40,7 +42,7 @@ class WarpFactory:
         return batch
 
 class WarpBatch:
-    backend='mujoco-warp-3.17'
+    backend='mujoco-warp-'+mjw.__version__
     def __init__(self,bank,hosts,indices,capacities=None,counters=None):
         self.hosts=[hosts[i] for i in indices];self.n=len(indices)
         self.packed=bank.bind(indices);self.model=self.packed.warp_model

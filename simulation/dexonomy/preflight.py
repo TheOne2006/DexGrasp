@@ -8,6 +8,27 @@ import re
 import subprocess
 
 PHYSICS = {'mujoco':'3.17.0', 'mujoco-warp':'3.17.0', 'warp-lang':'1.16.0'}
+ISAAC_PHYSICS = {'mujoco':'3.12.0', 'mujoco-warp':'3.12.0', 'warp-lang':'1.19.0'}
+
+
+def physics_profile(versions):
+    for name, expected in [('isaacsim-6.2', ISAAC_PHYSICS), ('legacy-3.17', PHYSICS)]:
+        if all(versions.get(key, '').split('+', 1)[0] == value for key, value in expected.items()):
+            return name
+    raise ValueError(f'Unsupported physics package combination: {versions}; use a documented environment constraint file')
+
+
+def check_cpu_runtime():
+    version = importlib.metadata.version('mujoco')
+    if version not in ('3.12.0', '3.17.0'):
+        raise ValueError(f'Unsupported MuJoCo {version}; expected 3.12.0 or 3.17.0')
+    return version
+
+
+def require_mixed_warp():
+    """Check package family; model options are validated before GPU stepping."""
+    versions = {n: importlib.metadata.version(n) for n in PHYSICS}
+    return physics_profile(versions)
 
 
 def version_tuple(value):
@@ -30,10 +51,11 @@ def check_device_build(capability, torch_version, cuda_version, architectures, d
 
 def inspect_runtime(*, gpu=False):
     versions = {n: importlib.metadata.version(n) for n in (*PHYSICS, 'torch', 'numpy')}
-    for name, expected in PHYSICS.items():
-        if versions[name] != expected:
-            raise ValueError(f'{name} must remain {expected}; physics upgrades need separate validation')
-    result = dict(versions=versions, gpu='NOT_RUN', physical_validation='NOT_RUN')
+    profile = physics_profile(versions)
+    result = dict(versions=versions, environment_profile=profile,
+                  mixed_world_gpu_supported=True,
+                  noslip_supported=profile == 'legacy-3.17',
+                  gpu='NOT_RUN', physical_validation='NOT_RUN')
     if not gpu:
         return result
     if not os.environ.get('DEXONOMY_PID_RECEIPT') or not os.environ.get('CUDA_VISIBLE_DEVICES'):
@@ -57,7 +79,7 @@ def inspect_runtime(*, gpu=False):
     result.update(gpu=dict(name=props.name, compute_capability=capability,
         total_memory_bytes=props.total_memory, driver=driver, torch_cuda=torch.version.cuda,
         torch_architectures=architectures, warp_device=str(device)),
-        environment_profile='rtx4090-tested' if '4090' in props.name and versions['torch']=='2.5.1+cu121'
+        hardware_validation='rtx4090-tested' if '4090' in props.name and versions['torch']=='2.5.1+cu121'
             else 'candidate-NOT_VALIDATED')
     return result
 

@@ -81,8 +81,8 @@ def _simulate_world_batch(worlds, cfg, allocation_scale=1, model_bank=None):
     timings = {}
     device = str(getattr(cfg, "warp_device", "cuda:0"))
     wp.set_device(device)
-    if mujoco.__version__.split(".")[:2] != ["3", "17"] or mjw.__version__.split(".")[:2] != ["3", "17"]:
-        raise MuJoCoWarpEvaluationError("V1.3 requires MuJoCo and MuJoCo Warp 3.17")
+    from dexonomy.preflight import require_mixed_warp
+    require_mixed_warp()
     import os
     retirement = bool(cfg.get("eval_failed_world_retirement", False))
     reuse_graph = model_bank is not None and os.environ.get("DEXONOMY_DATA_REUSE") == "1"

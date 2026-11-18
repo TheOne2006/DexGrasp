@@ -1,0 +1,8 @@
+{
+  "url": "https://codeload.github.com/NVIDIA/MinkowskiEngine/tar.gz/02fc608bea4c0549b0a7b00ca1bf15dee4a0b228",
+  "sha256": "9ac2730bff659202400a76abf370e9690caa1b68edd430629422192fccd7af02",
+  "version": "0.5.4",
+  "license": "MIT",
+  "scope": "build compatibility only; no sparse network replacement",
+  "commit": "02fc608bea4c0549b0a7b00ca1bf15dee4a0b228"
+}

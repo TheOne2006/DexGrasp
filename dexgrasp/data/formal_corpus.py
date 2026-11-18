@@ -3,6 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import tempfile
+import shutil
 import numpy as np
 import h5py
 from .dataset import contained, sha256
@@ -54,7 +56,8 @@ def audit_and_split(shards, observations, out, hand_path, seed):
         first = min(objects)
         for name in objects: groups.join(first,name)
     hand = URDFHand(hand_path)
-    database = Path(out)/'lineage.sqlite'
+    scratch = tempfile.TemporaryDirectory(prefix='dexgrasp-lineage-')
+    database = Path(scratch.name)/'lineage.sqlite'
     con = sqlite3.connect(database)
     con.execute('PRAGMA journal_mode=OFF')
     con.execute('CREATE TABLE samples(id TEXT PRIMARY KEY, object TEXT NOT NULL, parent TEXT)')
@@ -114,9 +117,12 @@ def audit_and_split(shards, observations, out, hand_path, seed):
                        generalization='held-out objects/assets; NOT held-out generation lineages',
                        physical_success_evaluated=False))
         (Path(out)/'split_protocol.json').write_text(json.dumps(protocol,indent=2)+'\n')
+        con.close()
+        shutil.copy2(database, Path(out)/'lineage.sqlite')
         return test,protocol
     finally:
         con.close()
+        scratch.cleanup()
 
 
 def verified_packed_identity(root, scale):

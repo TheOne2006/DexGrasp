@@ -113,6 +113,8 @@ def preserve_model_options(model, warp_model) -> None:
         "integrator", "cone", "solver", "iterations", "ls_iterations",
         "noslip_iterations", "ccd_iterations", "disableflags", "enableflags",
     ):
+        if name == "noslip_iterations" and not hasattr(warp_model.opt, name) and model.opt.noslip_iterations == 0:
+            continue  # An absent solver preserves the explicitly disabled solver.
         if not hasattr(warp_model.opt, name) or int(getattr(warp_model.opt, name)) != int(
             getattr(model.opt, name)
         ):
@@ -120,6 +122,8 @@ def preserve_model_options(model, warp_model) -> None:
     for name in (
         "timestep", "tolerance", "ls_tolerance", "noslip_tolerance", "ccd_tolerance",
     ):
+        if name == "noslip_tolerance" and not hasattr(warp_model.opt, name) and model.opt.noslip_iterations == 0:
+            continue  # Inactive tolerance has no effect; nonzero noslip is rejected above.
         value = getattr(warp_model.opt, name, None)
         if value is None or not np.allclose(
             value.numpy(), float(getattr(model.opt, name)), rtol=2e-7, atol=0

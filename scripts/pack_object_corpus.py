@@ -12,6 +12,7 @@ import shutil
 from pathlib import Path
 import sys
 import time
+import tempfile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import h5py
 import numpy as np
@@ -22,10 +23,12 @@ from dexgrasp.train.runner import source_state
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source',required=True);p.add_argument('--output',required=True)
+    p.add_argument('--source-index',type=Path,help='Explicit local index for a read-only shared source root')
     p.add_argument('--formal',action='store_true');p.add_argument('--seed',type=int,default=42)
     args=p.parse_args();source=Path(args.source).resolve();out=Path(args.output).resolve()
     out.mkdir(parents=True,exist_ok=False);started=time.monotonic()
-    index=json.loads((source/'INDEX.json').read_text())
+    index_path=args.source_index.resolve() if args.source_index else source/'INDEX.json'
+    index=json.loads(index_path.read_text())
     entries=[x for x in index['batches'] if x['kind'] in ('frozen_base','incremental')]
     if sum(x['kind']=='frozen_base' for x in entries)!=1:raise ValueError('one non-overlapping frozen base required')
     shards=[];observations=[];packages=[];source_identity={};hash_jobs=[]
@@ -58,8 +61,12 @@ def main():
         formal_test,formal_protocol = audit_and_split(shards,observations,out,packages[0]/'hand/hand_spec.json',args.seed)
         shutil.copytree(packages[0]/'hand',out/'hand')
     n=sum(s['count'] for s in shards);o=len(observations);arrays={};opened={}
+    # Random mmap writes on network filesystems can stall on every page fault.
+    # Stage locally, then publish sequentially before the final manifest.
+    scratch=tempfile.TemporaryDirectory(prefix='dexgrasp-packed-arrays-')
+    array_root=Path(scratch.name)
     def create(name,shape,dtype):
-        a=np.lib.format.open_memmap(out/(name+'.npy'),mode='w+',dtype=dtype,shape=shape)
+        a=np.lib.format.open_memmap(array_root/(name+'.npy'),mode='w+',dtype=dtype,shape=shape)
         opened[name]=a;arrays[name]=dict(path=name+'.npy',shape=list(shape),dtype=a.dtype.str)
         return a
     points=create('object_points',(o,1024,3),'float32')
@@ -97,10 +104,13 @@ def main():
         ids=np.flatnonzero(mask);a=create(split+'_rows',ids.shape,'int64');a[:]=ids
         splits[split]=dict(array=split+'_rows',count=len(ids))
     for a in opened.values():a.flush()
+    for spec in arrays.values():shutil.copyfile(array_root/spec['path'],out/spec['path'])
+    opened.clear()
+    scratch.cleanup()
     for name,spec in arrays.items():spec['sha256']=sha256(out/spec['path']);spec['bytes']=(out/spec['path']).stat().st_size
     common=dict(coord_scale_m=.2,split_status='diagnostic_object_hash_not_research_frozen',source_identity=source_identity,
                 hand_spec_sha256=hand_identities[0][0],hand_urdf_sha256=hand_identities[0][1],
-                source_index_sha256=sha256(source/'INDEX.json'),object_count=len(test_object),samples=n,source=source_state())
+                source_index_sha256=sha256(index_path),object_count=len(test_object),samples=n,source=source_state())
     if args.formal:
         common.update(split_status='formal_object_asset_v1',split_protocol_sha256=sha256(out/'split_protocol.json'))
     manifest=dict(schema='dexgrasp-packed-v1',**common,arrays=arrays,splits=splits,

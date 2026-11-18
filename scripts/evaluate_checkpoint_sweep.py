@@ -75,7 +75,7 @@ def prepare(checkpoints, selection, output, reuse_root):
     plan = dict(schema='dexgrasp-checkpoint-sweep-v1', created_at=now(), checkpoint_root=str(checkpoints),
                 selection=str(output/'selection.json'), selection_sha256=digest(output/'selection.json'),
                 candidates_per_checkpoint=len(selected['rows'])*8, objects=selected['objects'],
-                source=str(snapshot), python=str(repo/'.venv/bin/python'),
+                source=str(snapshot), python=sys.executable,
                 metric_source={k:digest(repo/k) for k in source_keys},
                 snapshot_sha256={str(p.relative_to(snapshot)):digest(p) for p in snapshot.rglob('*.py')},
                 checkpoint_policy='eligible saved steps only; exclude training instability by run policy; preserve weights; no selection on test',

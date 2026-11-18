@@ -81,3 +81,9 @@ and full Apache-2.0 text are retained beside that resource. See also
 [simulation attribution](simulation/NOTICE.md). This is a project-defined
 kinematic representation, not a manufacturer-defined 21-point standard,
 measured contact surface or hardware calibration. Full assets remain external.
+
+Image build adaptation: `scripts/patches/minkowski-isaac-cu128.patch` applies to the
+checksum-pinned NVIDIA MinkowskiEngine 0.5.4 source in `minkowski-source.json`.
+It includes CUDA 12/CCCL/GCC compatibility and links the image scipy-openblas32
+BLAS symbols. It is a complete alternative to `minkowski-cuda12.patch`, not an
+additional patch to apply on top. NVIDIA MIT license: `licenses/MinkowskiEngine-LICENSE.txt`.

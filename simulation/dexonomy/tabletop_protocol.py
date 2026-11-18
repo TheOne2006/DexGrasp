@@ -154,7 +154,7 @@ def check_snapshot(saved,host,candidate_id,backend):
 
 
 class CpuBatch:
-    backend='mujoco-3.17'
+    backend='mujoco-'+mujoco.__version__
     def __init__(self,hosts,indices,starts=None,snapshots=None,candidate_ids=None):
         self.envs=[];self.hosts=[hosts[i] for i in indices]
         for i,host in enumerate(self.hosts):
@@ -258,7 +258,7 @@ def _evaluate(entries,hosts,host_indices,*,batch_size=8,backend='cpu',policy=Pro
         slides,snapshots,traces=saved['slides'],saved['snapshots'],saved['traces']
         if set(slides)!=set(ids) or set(snapshots)!={name for name in ids if slides[name]['passes']}:raise ValueError('incomplete Slide checkpoint')
         for i,name in enumerate(ids):
-            if name in snapshots:check_snapshot(snapshots[name],hosts[host_indices[i]],name,'mujoco-3.17' if backend=='cpu' else 'mujoco-warp-3.17')
+            if name in snapshots:check_snapshot(snapshots[name],hosts[host_indices[i]],name,factory.backend)
         resumed=True
     for group in ([] if resumed else groups.values()):
         for off in range(0,len(group),batch_size):

@@ -24,3 +24,24 @@ class Portability(unittest.TestCase):
         import subprocess, sys
         code = 'import sys; import dexonomy.prediction_eval, dexonomy.generation, dexonomy.preflight; assert "warp" not in sys.modules and "torch" not in sys.modules'
         subprocess.run([sys.executable, '-c', code], check=True)
+
+
+class ImageProfiles(unittest.TestCase):
+    def test_rejects_mixed_physics_versions(self):
+        from dexonomy.preflight import physics_profile, ISAAC_PHYSICS, PHYSICS
+        self.assertEqual(physics_profile(ISAAC_PHYSICS), 'isaacsim-6.2')
+        self.assertEqual(physics_profile(PHYSICS), 'legacy-3.17')
+        with self.assertRaises(ValueError):
+            physics_profile({**ISAAC_PHYSICS, 'mujoco-warp': '3.17.0'})
+
+    def test_image_gpu_profile_accepts_cuda12_build(self):
+        from unittest.mock import patch
+        from dexonomy.preflight import require_mixed_warp, ISAAC_PHYSICS
+        versions = {**ISAAC_PHYSICS, 'warp-lang': '1.19.0+cu12'}
+        with patch('importlib.metadata.version', side_effect=versions.__getitem__):
+            self.assertEqual(require_mixed_warp(), 'isaacsim-6.2')
+
+    def test_snapshot_records_actual_engine(self):
+        import mujoco
+        from dexonomy.tabletop_protocol import CpuBatch
+        self.assertEqual(CpuBatch.backend, 'mujoco-' + mujoco.__version__)

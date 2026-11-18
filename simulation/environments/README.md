@@ -2,6 +2,7 @@
 
 | Profile | Status | Torch wheel | Physics |
 | --- | --- | --- | --- |
+| `isaacsim-6.2.txt` | Default image; CPU and mixed-world GPU contact regression; noslip=0 | 2.11.0+cu128 | MuJoCo/MJWarp 3.12.0, Warp 1.19.0+cu12 |
 | `rtx4090-tested.lock.txt` | Bounded validation on RTX4090 / Linux x86_64 / Python 3.11 | 2.5.1+cu121 | MuJoCo/MJWarp 3.17.0, Warp 1.16.0 |
 | `blackwell-candidate.txt` | RTX5090 **NOT_RUN** | 2.7.0, CUDA 12.8 | Same physics pins; no automatic upgrade |
 
@@ -18,7 +19,12 @@ CUDA 12.8 release notes list Linux 570.86.10 with the toolkit, separately from
 minor-version compatibility floors.
 [CUDA 12.8 release notes](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-toolkit-release-notes/index.html).
 
-Example fresh environments (do not mutate an active shared environment):
+Default image setup: run `./scripts/setup_image_environment.sh` from the repository root.
+It constrains existing image packages and installs both project packages.
+
+Historical environment recipes below require the matching historical source revision
+(the current project metadata pins NumPy 2.3.1). They are not installation commands
+for the current image-based checkout:
 
 ```bash
 # Reproduce tested 4090 package versions.

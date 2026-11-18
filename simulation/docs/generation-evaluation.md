@@ -1,14 +1,19 @@
+> 默认执行环境已切换为 `/opt/isaacsim`，使用仓库 `scripts/python.sh` 启动。
+> 安装入口与兼容边界见 [simulation README](../README.md)。镜像 MJWarp 3.12 已通过
+> 混合网格 GPU 接触回归，沿用当前 Floating / Tabletop 协议既定的 noslip=0；
+> 这不是本次迁移新增的限制，也不代表完整物理抓取协议已验收。
+
 # Sharpa 预测评估与数据生成
 
 `data / train / test` 保持原有职责。新增 `simulation/` 是本仓库维护、独立安装的
 Dexonomy 仿真运行时；不依赖外部 reference checkout，不改变训练网络。
-训练环境的 NumPy <2 与仿真固定 NumPy 2.2.6 分开，通过 JSON 传递预测。
+训练与 CPU 仿真复用镜像的 NumPy 2，通过 JSON 传递预测。
 
 ## 安装和外部资产
 
-按 [simulation README](../README.md) 建立 Python 3.11 独立环境。
-固定 MuJoCo/MJWarp 3.17.0、Warp 1.16.0；Torch 按硬件环境安装。
-4090 实测锁与 5090 待验证方案见 [环境说明](../environments/README.md)。
+按 [simulation README](../README.md) 使用 Isaac Sim 6.2 镜像环境。
+支持镜像 MuJoCo/MJWarp 3.12.0、Warp 1.19.0+cu12，以及历史 3.17.0/1.16.0 profile。
+4090 历史实测锁与 5090 镜像方案见 [环境说明](../environments/README.md)。
 CPU 诊断不用 CUDA；GPU 必须通过下述带三锁、PID 归属和资源余量检查的 runner。
 训练包的普通 import、评估 `--help`、输入检查均不初始化 Warp。
 
@@ -47,9 +52,9 @@ squeeze 是位置控制目标，允许沿用明确策略的越限目标，模拟
 只对可信本地资产显式传入 `--trusted-scenes`，不加载外来未验证 pickle。
 
 ```bash
-.venv-simulation/bin/python -m dexonomy.prediction_eval request.json \
+./scripts/python.sh -m dexonomy.prediction_eval request.json \
   --check-only --output input-check.json
-.venv-simulation/bin/python -m dexonomy.prediction_eval request.json \
+./scripts/python.sh -m dexonomy.prediction_eval request.json \
   --trusted-scenes --backend cpu --output physics.json
 python -m dexgrasp test-physics --decoded decoded.jsonl --report physics.json
 ```
@@ -97,10 +102,10 @@ case_limit_s（可选正数）、未来 hard_deadline_epoch、stop_new_init_epoc
 示例的 `deployment_template_only=true` 必须在资源分配后显式改为 false。
 
 ```bash
-.venv-simulation/bin/python -m dexonomy.generation check local-config.json
-.venv-simulation/bin/python -m dexonomy.generation run local-config.json --name attempt-01
-.venv-simulation/bin/python -m dexonomy.generation read local-config.json
-.venv-simulation/bin/python -m dexonomy.generation resume local-config.json --name attempt-02
+./scripts/python.sh -m dexonomy.generation check local-config.json
+./scripts/python.sh -m dexonomy.generation run local-config.json --name attempt-01
+./scripts/python.sh -m dexonomy.generation read local-config.json
+./scripts/python.sh -m dexonomy.generation resume local-config.json --name attempt-02
 ```
 
 入口同步运行已有 runner：三锁、两次 CUDA context PID challenge、未知 PID 拒绝、

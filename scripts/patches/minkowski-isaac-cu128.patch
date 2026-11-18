@@ -1,0 +1,102 @@
+--- a/setup.py
++++ b/setup.py
+@@ -119,8 +119,8 @@
+                 return arr[0].split("=")[1], argv
+ 
+ 
+-run_command("rm", "-rf", "build")
+-run_command("pip", "uninstall", "MinkowskiEngine", "-y")
++
++
+ 
+ # For cpu only build
+ CPU_ONLY, argv = _argparse("--cpu_only", argv)
+@@ -191,7 +191,7 @@
+         CC_FLAGS.append("-DUSE_MKL")
+         NVCC_FLAGS.append("-DUSE_MKL")
+     else:
+-        libraries.append(BLAS)
++        libraries.append("scipy_openblas")
+     if not (BLAS_INCLUDE_DIRS is False):
+         include_dirs += BLAS_INCLUDE_DIRS
+     if not (BLAS_LIBRARY_DIRS is False):
+@@ -304,8 +304,8 @@
+ SRC_FILES = SOURCE_SETS[target][1]
+ BIND_FILES = SOURCE_SETS[target][2]
+ ARGS = SOURCE_SETS[target][3]
+-CC_FLAGS += ARGS
+-NVCC_FLAGS += ARGS
++CC_FLAGS += ARGS + ["-std=c++17"] + ["-Dcblas_"+n+"=scipy_cblas_"+n for n in ("sgemm","dgemm","saxpy","daxpy")]
++NVCC_FLAGS += ARGS + ["-std=c++17"] + ["-std=c++17"] + ["-Dcblas_"+n+"=scipy_cblas_"+n for n in ("sgemm","dgemm","saxpy","daxpy")]
+ 
+ ext_modules = [
+     Extension(
+@@ -313,6 +313,9 @@
+         sources=[*[str(SRC_PATH / src_file) for src_file in SRC_FILES], *BIND_FILES],
+         extra_compile_args={"cxx": CC_FLAGS, "nvcc": NVCC_FLAGS},
+         libraries=libraries,
++        include_dirs=include_dirs + [str(p) for p in Path("/opt/isaacsim/lib/python3.12/site-packages/nvidia").glob("*/include")],
++        library_dirs=["/opt/isaacsim/lib/python3.12/site-packages/scipy_openblas32/lib", "/opt/isaacsim/lib/python3.12/site-packages/nvidia/cusparse/lib"],
++        runtime_library_dirs=["/opt/isaacsim/lib/python3.12/site-packages/scipy_openblas32/lib"],
+     ),
+ ]
+ 
+--- a/src/3rdparty/cudf/detail/nvtx/ranges.hpp
++++ b/src/3rdparty/cudf/detail/nvtx/ranges.hpp
+@@ -16,7 +16,7 @@
+ 
+ #pragma once
+ 
+-#include "nvtx3.hpp"
++#include <nvtx3/nvtx3.hpp>
+ 
+ namespace cudf {
+ /**
+@@ -31,7 +31,7 @@
+  * @brief Alias for an NVTX range in the libcudf domain.
+  *
+  */
+-using thread_range = ::nvtx3::domain_thread_range<libcudf_domain>;
++using thread_range = ::nvtx3::scoped_range_in<libcudf_domain>;
+ 
+ }  // namespace cudf
+ 
+--- a/src/3rdparty/concurrent_unordered_map.cuh
++++ b/src/3rdparty/concurrent_unordered_map.cuh
+@@ -1,3 +1,4 @@
++#include <thrust/execution_policy.h>
+ /*
+  * Copyright (c) 2017-2018, NVIDIA CORPORATION.  All rights reserved.
+  *
+--- a/src/coordinate_map_gpu.cu
++++ b/src/coordinate_map_gpu.cu
+@@ -1,3 +1,5 @@
++#include <thrust/remove.h>
++#include <thrust/unique.h>
+ /*
+  * Copyright (c) 2020 NVIDIA CORPORATION.
+  * Copyright (c) 2018-2020 Chris Choy (chrischoy@ai.stanford.edu)
+--- a/src/coordinate_map_gpu.cuh
++++ b/src/coordinate_map_gpu.cuh
+@@ -136,9 +136,11 @@
+       LOG_DEBUG("Reserve map of",
+                 compute_hash_table_size(size, m_hashtable_occupancy),
+                 "for concurrent_unordered_map of size", size);
+-      m_map = map_type::create(
++      auto unique_map = map_type::create(
+           compute_hash_table_size(size, m_hashtable_occupancy),
+           m_unused_element, m_unused_key, m_hasher, m_equal, m_map_allocator);
++      auto map_deleter = unique_map.get_deleter();
++      m_map = std::shared_ptr<map_type>(unique_map.release(), map_deleter);
+       LOG_DEBUG("Done concurrent_unordered_map creation");
+       CUDA_TRY(cudaStreamSynchronize(0));
+       m_capacity = size;
+--- a/src/spmm.cu
++++ b/src/spmm.cu
+@@ -1,3 +1,6 @@
++#include <thrust/execution_policy.h>
++#include <thrust/sort.h>
++#include <thrust/reduce.h>
+ /*
+  * Copyright (c) 2020 NVIDIA Corporation.
+  * Copyright (c) 2018-2020 Chris Choy (chrischoy@ai.stanford.edu).

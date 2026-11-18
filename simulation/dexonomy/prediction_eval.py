@@ -112,8 +112,10 @@ def evaluate(request, *, backend='cpu', batch_size=6):
     import numpy as np
     if backend not in ('cpu', 'warp') or batch_size < 1:
         raise ValueError('invalid backend/batch size')
-    if importlib.metadata.version('mujoco') != '3.17.0':
-        raise ValueError('requires mujoco==3.17.0')
+    from .preflight import check_cpu_runtime, require_mixed_warp
+    check_cpu_runtime()
+    if backend == 'warp':
+        require_mixed_warp()
     from .op.eval_force_closure_warp import _make_environment, _prepare_scene
     from .tabletop_protocol import make_host, model_identity, evaluate as tabletop_evaluate
     rows, hosts = [], {}

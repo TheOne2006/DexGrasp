@@ -10,6 +10,8 @@ class FormalCorpusTests(unittest.TestCase):
         self.assertEqual(groups.root('c'),'a');self.assertEqual(groups.root('d'),'d')
     def test_vectorized_fk_matches_scalar_for_real_hand(self):
         path=Path(__file__).resolve().parents[2]/'data/sharpa-object-20261111/sharpa-object-surface-meanh-20261110-v1/hand/hand_spec.json'
+        if not path.exists():
+            path=Path(__file__).resolve().parents[2]/'data/sharpa_formal_20261111/local_cache/hand/hand_spec.json'
         if not path.exists():self.skipTest('real hand fixture unavailable')
         hand=URDFHand(path)
         q=np.random.default_rng(123).uniform(hand.lower,hand.upper,(8,22))

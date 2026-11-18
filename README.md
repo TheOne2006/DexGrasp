@@ -26,6 +26,48 @@ DexGrasp/                         自有 Git 仓库
 
 实际数据、权重和结果仍分别放在外层 `../data/`、`../checkpoints/`、`../outputs/`；参考源码留在 `../reference/`。数据展示板及其服务、展示导出工具位于同级的 [`../site/`](../site/README.md)，独立于本实验代码仓库。模型架构见 [model v1](docs/model-v1.md)，数据协议与来源见 [data](docs/data.md)。
 
+## 镜像执行环境
+
+当前默认复用 `/opt/isaacsim`（Isaac Sim 6.2 / Python 3.12 / Torch 2.11 cu128），
+不再要求建立 `.venv` 与 `.venv-simulation`。在仓库根目录执行：
+
+```bash
+./scripts/setup_image_environment.sh
+./scripts/python.sh -m dexgrasp plan --config configs/fm.json
+./scripts/python.sh -m dexonomy.preflight
+./scripts/python.sh -m dexonomy.prediction_eval --help
+```
+
+`python.sh` 使用镜像解释器，并仅对该进程移除 WebIDE 注入的旧 SQLite 库路径；
+子进程继承修正后的环境。可通过 `DEXGRASP_PYTHON` 显式覆盖解释器。
+安装脚本冻结镜像核心包后补齐或更新项目辅助依赖，版本冲突时报错。
+环境约束见 `simulation/environments/isaacsim-6.2.txt`。
+训练包、仿真包与展示板统一 NumPy **2.3.1**；展示板轻量环境约束位于同级
+`../site/requirements.txt`，默认服务入口也复用镜像解释器。
+2026-11-17 已核对 PyPI：Isaac Sim 6.2.0.0 为当前发行版；其 kernel/core
+元数据严格锁定 NumPy 2.3.1、Torch 2.11.0、SciPy 1.17.0、MuJoCo/MJWarp
+3.12.0、Newton 1.6.1、trimesh 4.11.1、imageio 2.37.2、coacd 1.0.7。
+这些核心包不能在保持 Isaac 依赖一致的同时独立追新。项目辅助包更新为
+qpsolvers 4.13.0、hydra-core 1.3.8、ruamel.yaml 0.19.1；安装脚本允许
+这三个包按已核对的约束升级，其余已安装包继续冻结。
+下文命令中的 `python` 请使用 `./scripts/python.sh`，避免调用不支持 RTX5090 的系统 Torch。
+
+镜像上的真实 MinkowskiEngine 0.5.4 已用 CUDA 12.8 / sm_120 编译，GPU 前后向通过。
+复建入口：`./scripts/python.sh scripts/build_image_minkowski.py`；源码、工具链 SHA-256
+和兼容补丁保存在 `scripts/patches/`，不修改系统驱动或安装系统 CUDA。
+Warp 使用 NVIDIA 官方 **1.19.0+cu12**；普通 PyPI 1.19 CUDA 13 wheel 不适用于当前 R570 驱动。
+混合场景适配器支持镜像 MJWarp 3.12，已验证不同网格/缺失 geom 槽位的 CPU/GPU 接触步进和重新绑定。
+当前 Floating / Tabletop 评估及生产生成协议原本就固定 `noslip_iterations=0`，
+本次镜像适配保持该设置，没有新增协议限制或降低参数。历史单姿态诊断的 noslip=2
+属于另一套协议；镜像 GPU 不支持该旧选项时仍明确拒绝，不静默修改。
+软件与接触回归不代表完整抓取成功率验收；旧结果仍保留实际后端版本。
+
+本机恢复记录位于 `../outputs/isaac_environment_adaptation/`。
+历史正式数据入口为 `../data/sharpa_formal_20261111/local_cache`；七个数组按原哈希恢复，
+较新的 floating 增量仅登记为源包，不混入旧划分。
+本机四组配置在 `../outputs/isaac_environment_adaptation/configs/`，仅重新绑定路径；
+仓库历史配置保留原样。生产资产为 `../data/simulation_assets`，35 类模板和 100 文件清单已校验。
+
 ## 运行
 
 使用包含 PyTorch、NumPy、h5py、SciPy 的项目环境。真实几何编码还需要与 PyTorch/CUDA 匹配的 **MinkowskiEngine**；缺失时明确报错，不替换成其他模型。OBJ/STL/PLY 导入额外需要 `trimesh`；NPZ 三角网格不需要它。
@@ -101,9 +143,9 @@ PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES='' python -m unittest discover -s
 train 诊断或 test 条件清单，再对各 checkpoint 使用相同条件、噪声和 Euler 步数：
 
 ```bash
-.venv/bin/python scripts/evaluate_formal.py prepare --root <formal-packed-root> \
+./scripts/python.sh scripts/evaluate_formal.py prepare --root <formal-packed-root> \
   --output <selection.json> --split test --conditions 4
-.venv/bin/python scripts/evaluate_formal.py run --checkpoint <step_XXXXXX.pt> \
+./scripts/python.sh scripts/evaluate_formal.py run --checkpoint <step_XXXXXX.pt> \
   --selection <selection.json> --output <new-output-directory> \
   --device cuda:0 --candidates 8 --batch-size 8 --workers 8 --steps 20
 ```
@@ -156,7 +198,7 @@ MinkowskiEngine CUDA 稀疏计算的独立重复运行并不逐位一致，因�
 
 ```bash
 OMP_NUM_THREADS=4 TORCHINDUCTOR_COMPILE_THREADS=4 \
-.venv/bin/python -m torch.distributed.run --standalone --nproc_per_node=2 \
+./scripts/python.sh -m torch.distributed.run --standalone --nproc_per_node=2 \
   scripts/benchmark_ddp.py --config <config.json> --output <result.json> --updates
 ```
 
@@ -164,7 +206,7 @@ OMP_NUM_THREADS=4 TORCHINDUCTOR_COMPILE_THREADS=4 \
 默认不更新权重，`--updates` 仅作短程软件核验，不保存正式训练模型。GPU 算子回归测试：
 
 ```bash
-DEXGRASP_GPU_TESTS=1 PYTHONPATH=tests .venv/bin/python -m unittest test_execution -v
+DEXGRASP_GPU_TESTS=1 PYTHONPATH=tests ./scripts/python.sh -m unittest test_execution -v
 ```
 
 显存选项 `checkpoint_direction_bias=true` 仅重算方向几何偏置 MLP 的激活，不重算整个 Transformer；
@@ -175,7 +217,7 @@ DEXGRASP_GPU_TESTS=1 PYTHONPATH=tests .venv/bin/python -m unittest test_executio
 百万级数据应先在进程组外做一次完整审计，再设置配置的 `data_audit` 指向审计结果：
 
 ```bash
-.venv/bin/python scripts/audit_training_data.py --dataset-root <data-v1-root> --output <audit.json>
+./scripts/python.sh scripts/audit_training_data.py --dataset-root <data-v1-root> --output <audit.json>
 ```
 
 DDP 会重新检查审计代码、手模型、划分和所有 shard 的 SHA-256，不会仅凭 READY 文件跳过内容验证。
@@ -187,7 +229,7 @@ DDP 会重新检查审计代码、手模型、划分和所有 shard 的 SHA-256�
 OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 TORCHINDUCTOR_COMPILE_THREADS=4 \
 NCCL_P2P_DISABLE=1 NCCL_CUMEM_HOST_ENABLE=0 \
 LD_PRELOAD="$PWD/.venv/nccl-runtime/nvidia/nccl/lib/libnccl.so.2" \
-.venv/bin/python -m torch.distributed.run --standalone --nproc_per_node=2 \
+./scripts/python.sh -m torch.distributed.run --standalone --nproc_per_node=2 \
   scripts/train_fm_ddp.py --config <validated-config.json>
 ```
 
@@ -218,7 +260,7 @@ LD_PRELOAD="$PWD/.venv/nccl-runtime/nvidia/nccl/lib/libnccl.so.2" \
 当前原始数据适配器可这样构建训练表（输出目录必须不存在）：
 
 ```bash
-.venv/bin/python scripts/pack_object_corpus.py --source <raw-corpus-root> --output <new-packed-root>
+./scripts/python.sh scripts/pack_object_corpus.py --source <raw-corpus-root> --output <new-packed-root>
 ```
 
 它选择一个 frozen base 及有排重证明的增量，排除重叠首批，完整校验源清单，保留真实 h32 和 +Z 方向。
@@ -258,11 +300,11 @@ GPU→CPU 约 0.41 秒，共享盘序列化写入及 fsync 约 2.40 秒，按每
 它只读取权重，不训练、不清理历史版本，也不按 test 指标选择 checkpoint。
 
 ```bash
-.venv/bin/python scripts/evaluate_checkpoint_sweep.py prepare \
+./scripts/python.sh scripts/evaluate_checkpoint_sweep.py prepare \
   --checkpoints ../checkpoints/sharpa_formal_20261111 \
   --selection ../outputs/ckpt_metrics_20261112/selection.json \
   --reuse-root ../outputs/ckpt_metrics_20261112 --output <new-sweep-directory>
-.venv/bin/python scripts/evaluate_checkpoint_sweep.py run \
+./scripts/python.sh scripts/evaluate_checkpoint_sweep.py run \
   --plan-path <new-sweep-directory>/plan.json --gpus 0 1 2 3 --workers 12
 ```
 
@@ -285,10 +327,10 @@ A 仅保留 ≤40k、B ≤90k，共 26 个、338,624 个候选。排除依据是
 中的 `R/t/q`，恢复逐条件物体中心与缩放，不再 inference。准备碰撞资产、评估、汇总可分别执行：
 
 ```bash
-.venv/bin/python scripts/evaluate_physics.py prepare \
+./scripts/python.sh scripts/evaluate_physics.py prepare \
   --selection ../outputs/ckpt_sweep_20261112/selection.json \
   --assets ../data/eval_physics_sharpa_v1 --workers 12
-.venv/bin/python scripts/evaluate_physics.py run \
+./scripts/python.sh scripts/evaluate_physics.py run \
   --selection ../outputs/ckpt_sweep_20261112/selection.json \
   --assets ../data/eval_physics_sharpa_v1 \
   --runs ../outputs/ckpt_metrics_20261112/A_040000 ../outputs/ckpt_metrics_20261112/B_090000 \
@@ -391,3 +433,13 @@ Tabletop Slide 后六向协议，以及有界单卡 Init → Refine → Eval / �
 `test-physics --decoded decoded.jsonl --report physics.json` 校验 decoded SHA256 与候选身份，
 汇总 `dexgrasp-physics-result/v1`，保留异常和未测状态；旧 `test --verdicts` 接口保持不变。
 Data v1 的场景点云、射线 h 与单物体 h32 协议不可混用。
+
+## 最终四组全量 test 与 26 方向评测
+
+`./scripts/python.sh scripts/evaluate_final.py prepare --output ../outputs/<new-run>` 校验当前正式 packed 数据、冻结全部 429,119 条 test 行与 ABCD 修复后的 200k 权重。随后 `run --output ../outputs/<new-run> --workers 96` 启动 8 个推理进程，A/B/C/D 分别使用 GPU 0–1 / 2–3 / 4–5 / 6–7；两卡按奇偶索引分片。每卡实测 batch 128/256/512/1024，选择吞吐最高的设置，遇显存不足减半。20 步 Euler、BF16 模型计算、FP32 状态累计，不更新权重。
+
+每条原始 test 条件生成一个候选，噪声由 `8401 + packed_row` 固定，四组一致。方向测试覆盖全部 407 个 test 物体，每个物体选择最小 packed test 行，固定点云与噪声，遍历 6 个面法向、12 个面对角线和 8 个体对角线；额外生成同噪声的原标注方向对照，单独统计。该方向测试不是每条 test 条件的 26 倍展开。
+
+GPU 推理结束后，CPU 进程池执行全部 IK。保存预测关键点、逐行解码 R/t/q 与指标、分片索引、吞吐测试、原子进度和物体等权汇总。失败保留在通过率分母。没有碰撞或物理仿真；单候选不报告固定条件多样性。`decode --output ... --workers 96` 可跳过已完成解码分片继续解码。
+
+可追加 `scripts/evaluate_quality_gpu.py` 的 `prepare`、`diversity`、`run --root ../outputs/<run>` 阶段，使用 8 卡、每批 512 姿态进行静态碰撞查询。CDC 是五指最近有符号距离的极差，未接触距离截断至 10 mm；PD 是最大手物穿透；两者物体等权汇总。每个几何组最多抽检 8 姿态，GPU 与原 CPU 查询偏差超过 0.2 mm 时整组回退 CPU。全量姿态 PCA 使用平移（m）、手腕旋转向量（rad）和 22 关节角（rad），不标准化、不按物理成功过滤；它是跨条件多样性，不能等同固定条件的采样多样性。协议与校验值保存在 `quality/`，不计算 GSR/OSR，也不与 KPGrasp 论文作同协议排名。

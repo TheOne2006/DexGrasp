@@ -30,8 +30,9 @@ def validate(config):
     from night_config import validate_worker_mode
     from night_inventory import validate_inventory
     from night_schedule import validate_schedule
-    from .preflight import inspect_runtime
+    from .preflight import inspect_runtime, require_mixed_warp
     inspect_runtime()
+    require_mixed_warp()
     mode = validate_worker_mode(config)
     validate_schedule(config)
     cases = []

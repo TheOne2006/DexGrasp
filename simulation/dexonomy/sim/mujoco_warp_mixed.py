@@ -195,7 +195,7 @@ def _prepare_carrier(hosts, *, timings=None):
     for name, mesh in extra_meshes:
         if mesh.needsdf:
             raise ValueError("direct mesh pooling does not support SDF plugins")
-        carrier_spec.add_mesh(name=name, **{field: getattr(mesh, field) for field in fields})
+        carrier_spec.add_mesh(name=name, **{field: getattr(mesh, field) for field in fields if hasattr(mesh, field)})
     timings["direct_mesh_merge_s"] = time.perf_counter() - phase
     phase = time.perf_counter()
     pooled_meshes = {mesh.name: mesh for mesh in carrier_spec.meshes}
@@ -206,6 +206,7 @@ def _prepare_carrier(hosts, *, timings=None):
     # can change GJK/EPA branches and the MULTICCD contact manifold.
     mesh_parameters = ("scale", "refpos", "refquat", "uservert", "usernormal", "usertexcoord",
                        "userface", "userfacenormal", "userfacetexcoord", "usernode", "usertet")
+    mesh_parameters = tuple(name for name in mesh_parameters if hasattr(next(iter(hosts[0]._spec.meshes)), name))
     restored_parameters = {}
     for hindex, host in enumerate(hosts):
         for original in host._spec.meshes:

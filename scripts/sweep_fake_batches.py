@@ -21,7 +21,7 @@ def standard_batches():
 def standard_boundary(start, fits, *, fallback_1024=True):
     def retry_below(high, low):
         if fallback_1024 and high == 1024:
-            for fallback in (1000, 960):
+            for fallback in (1000, 960, 840, 800):
                 if fits(fallback):
                     return fallback, high
                 high = fallback
@@ -82,7 +82,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output-dir', required=True, type=Path)
     parser.add_argument('--ranks', type=int, default=4)
-    parser.add_argument('--start', required=True, type=int)
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument('--start', type=int)
+    selection.add_argument('--batches', type=int, nargs='+', metavar='N',
+                           help='Time every listed per-device batch, including tiers below a passing one')
     parser.add_argument('--exact', action='store_true', help='Search an integer grid instead of 2^n and 5*2^n')
     parser.add_argument('--stride', type=int, help='Use the exact grid with this initial bracketing step')
     parser.add_argument('--resolution', type=int, help='Use the exact grid with this batch increment')
@@ -90,7 +93,10 @@ def main():
     exact = args.exact or args.stride is not None or args.resolution is not None
     stride = 32 if args.stride is None else args.stride
     resolution = 1 if args.resolution is None else args.resolution
-    if min(args.ranks, args.start, stride, resolution) < 1 or args.start % resolution:
+    if args.batches and (exact or min(args.batches) < 1 or len(set(args.batches)) != len(args.batches)):
+        parser.error('--batches requires distinct positive sizes and cannot be combined with exact search')
+    if min(args.ranks, stride, resolution) < 1 or (args.start is not None and
+            (args.start < 1 or args.start % resolution)):
         parser.error('positive ranks, start, stride, resolution and an aligned starting batch are required')
     root = Path(__file__).resolve().parents[1]
     output = args.output_dir.resolve()
@@ -115,13 +121,23 @@ def main():
         trials.append(dict(batch=batch, outcome='pass', samples_per_second=result['samples_per_second']))
         return True
 
+    if args.batches:
+        for batch in args.batches:
+            fits(batch)
+        best = max((trial for trial in trials if trial['outcome'] == 'pass'),
+                   key=lambda trial: trial['samples_per_second'], default=None)
+        summary = dict(ranks=args.ranks, fastest_per_gpu=best['batch'] if best else None,
+                       fastest_global=best['batch'] * args.ranks if best else None, trials=trials)
+        (output/'throughput.json').write_text(json.dumps(summary, indent=2))
+        print(json.dumps(summary))
+        return
     if exact:
         low, high = exact_boundary(args.start, stride, resolution, fits)
     else:
         low, high = standard_boundary(args.start, fits)
     summary = dict(max_pass_per_gpu=low, next_oom_per_gpu=high, ranks=args.ranks,
                    max_pass_global=low*args.ranks, next_oom_global=high*args.ranks,
-                   grid='exact' if exact else '2^n or 5*2^n, with 1000/960 fallback below 1024',
+                   grid='exact' if exact else '2^n or 5*2^n, with 1000/960/840/800 fallback below 1024',
                    resolution=resolution if exact else None, trials=trials)
     (output/'capacity.json').write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary))

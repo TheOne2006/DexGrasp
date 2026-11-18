@@ -12,7 +12,9 @@ import tempfile
 import time
 import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from evaluate_final import save,digest,now,BASE
+from dexgrasp.test.frozen import decoded, digest, now, save
+
+BASE = Path(__file__).resolve().parents[2]
 
 
 def prepare(root):
@@ -71,11 +73,6 @@ def prepare(root):
         source_note='KPGrasp Table 1/3 are published Shadow/Dexonomy results; these are Sharpa adapted diagnostics, without likelihood ranking',
         observation_metadata=metadata,staged_asset_files=len(copy_jobs))
     save(out/'protocol.json',protocol);print('Prepared',len(jobs),'geometry groups',len(needed),'observations',flush=True)
-
-
-def decoded(root,group):
-    n=json.loads((root/'plan.json').read_text())['test_count'];parts=[np.load(root/group/f'rank{r}/test/decoded.npy') for r in (0,1)]
-    a=np.empty(n,dtype=parts[0].dtype);a[::2]=parts[0];a[1::2]=parts[1];return a
 
 
 def diversity(root):

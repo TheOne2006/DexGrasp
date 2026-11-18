@@ -16,6 +16,7 @@ from scipy.spatial.transform import Rotation
 import trimesh
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dexgrasp.data.sharpa_assets import make_hand, box
+from dexgrasp.data.dexonomy_scale import released_grasp_scale
 from dexgrasp.data.retarget import ShadowLandmarks, retarget
 from dexgrasp.data.prepare import ShardWriter
 from dexgrasp.data.dataset import audit_dataset, sha256
@@ -53,7 +54,7 @@ def process_object(args):
         assert np.allclose(base_scale, float(p.stem[5:])/100)
         pose = np.asarray(obj['pose'], float)
         for i, q in enumerate(d['grasp_qpos']):
-            pool.append((p, i, q, base_scale*float(d['scene_scale'][i]), pose, mesh_path))
+            pool.append((p, i, q, released_grasp_scale(base_scale, d['scene_scale'][i]), pose, mesh_path))
     seed = int(hashlib.sha256(object_id.encode()).hexdigest()[:8], 16)
     rng = np.random.default_rng(seed)
     rng.shuffle(pool)

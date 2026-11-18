@@ -1,8 +1,8 @@
 # DexGrasp
 
-EPIC 的场景条件灵巧手抓姿生成框架，按个人模型设计 v1 实现。当前只包含自有 Sharpa 21 点模型：**Flow Matching 教师 + FlowMap 轨迹蒸馏学生**。
+EPIC 的 Sharpa 21 点抓姿生成与评测代码。当前四个 200k Flow Matching 模型使用 1,024 个目标物体表面点和指定方向，输出整手关键点，再经掌部 SVD 与有界手指 IK 恢复 `R,t,q[22]`。几何方向 bias / AdaLN 与 AdamW / Muon 构成四组对照。
 
-输入目标点云、包含目标/环境/桌面的场景点云、目标标记、连续 `palm_gap` 和必需的接近方向；输出整手关键点，再经掌部 SVD 与有界手指 IK 恢复 `R,t,q[22]`。旧 Shadow 三阶段基线、Diffusion 模型及其入口已移除。
+深度对照在 C 的配置上额外输入连续 `palm_gap`。仓库也保留原模型设计中的场景编码与 FlowMap 蒸馏入口。四模型冻结配置、物理控制及验收进度见[实验报告](../outputs/gsr_osr_200k/验收报告.md)。
 
 ## 文件夹职责
 
@@ -25,6 +25,15 @@ DexGrasp/                         自有 Git 仓库
 ```
 
 实际数据、权重和结果仍分别放在外层 `../data/`、`../checkpoints/`、`../outputs/`；参考源码留在 `../reference/`。数据展示板及其服务、展示导出工具位于同级的 [`../site/`](../site/README.md)，独立于本实验代码仓库。模型架构见 [model v1](docs/model-v1.md)，数据协议与来源见 [data](docs/data.md)。
+
+### 常用代码入口
+
+| 任务 | 入口 | 实现与协议 |
+| --- | --- | --- |
+| data · 准备和核验数据 | `python -m dexgrasp` 的 `prepare-data` 和 `audit-data` 子命令（Data v1） | [Data v1 读写与审计](dexgrasp/data/) · [正式 packed 数据与划分](docs/data.md#2026-11-11-正式-object-only-数据) |
+| train · 训练与恢复 | `python -m dexgrasp` 的 `plan` 和 `train` 子命令（单卡），多卡 FM 用 `torchrun` 启动 [train_fm_ddp.py](scripts/train_fm_ddp.py) | [训练实现](dexgrasp/train/) · [四组正式配置](configs/formal_20261111/) |
+| test · 关键点生成与 IK | [evaluate_formal.py](scripts/evaluate_formal.py)（固定条件抽样）或 [evaluate_final.py](scripts/evaluate_final.py)（全量 test 与 26 方向） | [运动学指标](dexgrasp/test/metrics.py) · [分片解码与回执](dexgrasp/test/frozen.py) |
+| test · 物理回放 | [evaluate_source_tasks.py](scripts/evaluate_source_tasks.py)（原场景任务）或 [replay_source_scenes.py](scripts/replay_source_scenes.py)（批量回放） | [Floating 与 Tabletop 执行协议](simulation/docs/generation-evaluation.md#两个固定物理协议) |
 
 ## 镜像执行环境
 
@@ -113,9 +122,19 @@ python -m dexgrasp test --decoded ../outputs/v1/decoded.jsonl
 
 ## 验证
 
+从内层仓库运行软件测试。后两组仿真测试使用已安装 `simulation/` 的项目环境。
+
 ```bash
-PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES='' python -m unittest discover -s tests -v
+(
+  set -e
+  export PYTHONDONTWRITEBYTECODE=1 CUDA_VISIBLE_DEVICES='' OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+  for suite in tests simulation/tests simulation/scripts/grouped_production; do
+    ./scripts/python.sh -m unittest discover -s "$suite" -v
+  done
+)
 ```
+
+展示板的接口与静态资源测试在同级目录，运行方式见 [site/README.md](../site/README.md#data-components)。
 
 训练循环软件测试禁用 `optimizer.step`。MinkowskiEngine 不可用时，仅真实稀疏网络测试跳过；其他模型测试使用限定在 `tests/` 的编码器替身。验证记录保存在外层 `../outputs/`；模型与优化细节见 [模型 v1](docs/model-v1.md)。
 
@@ -440,6 +459,54 @@ Data v1 的场景点云、射线 h 与单物体 h32 协议不可混用。
 
 每条原始 test 条件生成一个候选，噪声由 `8401 + packed_row` 固定，四组一致。方向测试覆盖全部 407 个 test 物体，每个物体选择最小 packed test 行，固定点云与噪声，遍历 6 个面法向、12 个面对角线和 8 个体对角线；额外生成同噪声的原标注方向对照，单独统计。该方向测试不是每条 test 条件的 26 倍展开。
 
-GPU 推理结束后，CPU 进程池执行全部 IK。保存预测关键点、逐行解码 R/t/q 与指标、分片索引、吞吐测试、原子进度和物体等权汇总。失败保留在通过率分母。没有碰撞或物理仿真；单候选不报告固定条件多样性。`decode --output ... --workers 96` 可跳过已完成解码分片继续解码。
+GPU 推理结束后，CPU 进程池执行全部 IK。保存预测关键点、逐行解码 R/t/q 与指标、分片索引、吞吐测试、原子进度和物体等权汇总。失败保留在通过率分母。没有碰撞或物理仿真；单候选不报告固定条件多样性。`decode --output ... --workers 96` 续跑时按回执核验已有解码文件的行数与 SHA-256，完成剩余分片，并补写缺失的汇总。
 
 可追加 `scripts/evaluate_quality_gpu.py` 的 `prepare`、`diversity`、`run --root ../outputs/<run>` 阶段，使用 8 卡、每批 512 姿态进行静态碰撞查询。CDC 是五指最近有符号距离的极差，未接触距离截断至 10 mm；PD 是最大手物穿透；两者物体等权汇总。每个几何组最多抽检 8 姿态，GPU 与原 CPU 查询偏差超过 0.2 mm 时整组回退 CPU。全量姿态 PCA 使用平移（m）、手腕旋转向量（rad）和 22 关节角（rad），不标准化、不按物理成功过滤；它是跨条件多样性，不能等同固定条件的采样多样性。协议与校验值保存在 `quality/`，不计算 GSR/OSR，也不与 KPGrasp 论文作同协议排名。
+
+### 冻结预测的物理复测与条件多样性
+
+完整 test 先运行 `evaluate_final.py` 并准备 `quality/protocol.json` 的碰撞资产。
+`scripts/evaluate_frozen_force.py --root <final-run> --output <force-run> --workers 64`
+用原生 MuJoCo 保留单姿态六向协议的 noslip 参数，按几何组复用模型。输入和输出均在实验目录。
+`summary.json` 的 GSR 按候选计数，OSR 按至少成功一次的物体计数。比较 OSR 时须同时给出每物体候选预算。
+
+`scripts/evaluate_random_directions.py` 的 `--mode random` 为同一物体固定噪声、均匀采球面方向，
+`--mode noise` 为同一观测固定真实标签方向、独立采生成噪声。两种实验均接受
+`--root <final-run> --output <trial-run> --count N`。用 `evaluate_frozen_force.py`
+追加 `--inputs <trial-run> --mode random` 或 `--mode noise` 复测动力学。
+`analyze_direction_coverage.py` 和 `analyze_noise_diversity.py` 分别读取
+`--root <final-run> --inputs <trial-run> --force <force-run>`。
+后者在手腕局部坐标系度量指尖差异，并报告同一条件下可组成成功姿态对的物体数。
+
+自有 GT 的生产六向证据用 `scripts/audit_source_force.py --root <final-run>
+--packages <source-packages> --output <source-audit>` 逐行核验，保留 Floating FC 和 Tabletop
+Slide → FC 的分母及每条来源记录。独立回放同源 GT 需要源 Refine 的完整控制。
+`prepare_self_force.py` 从冻结解码和源手姿准备场景；
+`evaluate_self_force.py paired` 使用每物体相同的十条条件，`full` 使用全部条件。
+这两个入口都执行重新构造控制的 Floating 实验，`--help` 列出资源和路径参数。
+
+Dexonomy 外测采用独立解释器。训练镜像运行 `evaluate_dexonomy_objects.py` 的
+`prepare`、`generate`、`decode`。输入优先使用发布的完整点云；
+`--allow-mesh-clouds` 允许在缺少完整点云时从发布的 simplified.obj 重建，
+每个物体的来源和 SHA256 写入 plan。物理环境由 `setup_dexonomy_benchmark.sh`
+安装。在该解释器内执行 `dexonomy_force_test.py --inputs <official-run>
+--reference <Dexonomy-checkout> --bench <DexGraspBench-checkout> --hand <Sharpa-xml>`，
+可用 `--image-packages` 提供训练镜像中的 Torch。上游接触 QP 和 pregrasp
+rollout 生成三阶段位置控制，同一候选分别调用 Dexonomy eval_fc 和 DexGraspBench fc_mocap。
+用 `evaluate_dexonomy_objects.py audit-mesh --root <final-run> --assets <official-assets> --packages <source-packages> --output <official-run>` 核对训练原始网格。聚合报告给出全测试集、训练同 ID、未见 ID 和同时未见 ID/网格的 GSR、逐尺度 OSR@10 与物体 OSR@60。
+多进程执行原生 QP 时设置 `RAYON_NUM_THREADS=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1`，
+防止每个 worker 再创建节点级线程池。
+
+`scripts/evaluate_palm_depth.py` 用原始三角形网格复算 formal h32；
+`scripts/evaluate_depth_control.py` 在相同观测、方向与噪声下扫描五个训练集深度分位数。
+深度条件对照 `configs/formal_20261111/C_object_only_h32_muon.json` 与 C 的 h-less 模型配对。
+
+在已有 32 次固定条件噪声实验上，`scripts/evaluate_noise_scale.py` 可选同一批物体和噪声向量，改变初始标准差，1.0 档直接读取同一候选的缓存。物理回放复用 `evaluate_conditioned_force.py`，手型比较复用 `analyze_noise_diversity.py`。
+
+`scripts/evaluate_source_tasks.py` 的 `prepare`、`controls`、`run`、`summarize` 依次准备原世界坐标场景、冻结单帧输入与回退控制、执行原任务、统计结果。在生产环境中运行；`run` 支持每卡一个进程的 `--rank` 和 `--world-size`。每个物体默认十条，`prepare --all-rows` 使用冻结 test 全部条件。此入口复用 Weilun 的 resident 接触求解、pregrasp、Floating FC、Tabletop Slide→FC。一律保留给定的抓姿，控制构造失败的候选计入分母，原始交付的轨迹和重建的轨迹分别记录。
+
+大批量回放使用 `scripts/replay_source_scenes.py --inputs <上述输入目录> --output <结果目录> --rank <卡序号> --world-size <卡数>`。每个进程读取已就绪的场景控制文件，复用仿真模型与 CUDA 计算图，把控制求解状态和逐候选物理判定写到 `controller/`、`verdicts/`。各进程在 `protocol-*.json` 留存批次配置与代码摘要，支持按已完成场景续跑。
+
+冻结的随机方向和噪声预测可通过 `scripts/prepare_conditioned_source.py` 绑定到自有 test 的原始物体位姿。随后复用上述 `controls` 和大批量回放入口。`scripts/summarize_conditioned_source.py` 按各组的原始行号核对输出，并计算方向与物理联合成功率、标签覆盖和成功抓姿的手型差异。
+
+生产协议对照可用 `scripts/setup_dexonomy_benchmark.sh sharpa-production-replay` 建立独立的 MuJoCo/MJWarp 3.17 + Warp 1.16 环境。生产回执、恢复原始三段控制的独立回放以及从单帧重建控制的试验分别记分。

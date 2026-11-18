@@ -3,12 +3,37 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import numpy as np
 
 spec=importlib.util.spec_from_file_location('final_eval',Path(__file__).parents[1]/'scripts/evaluate_final.py')
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 class FullEvaluationTests(unittest.TestCase):
+    def test_resume_rebuilds_missing_summary_without_repeating_ik(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            m.save(root / "plan.json", dict(root=temp))
+            for group in "ABCD":
+                for mode in ("directions", "test"):
+                    for rank in (0, 1):
+                        folder = root / group / f"rank{rank}" / mode
+                        folder.mkdir(parents=True)
+                        path = folder / "decoded.npy"
+                        np.save(path, np.zeros(1, dtype=m.DTYPE))
+                        m.save(folder / "decoded.done.json", dict(count=1, sha256=m.digest(path)))
+                    if (group, mode) != ("B", "test"):
+                        m.save(root / group / f"{mode}_summary.json", {})
+
+            with patch.object(m, "decode_shard") as decode, patch.object(m, "aggregate") as aggregate:
+                m.decode_all(root, workers=1)
+                decode.assert_not_called()
+                aggregate.assert_called_once_with(root, "B", "test")
+
+            np.save(root / "B/rank1/test/decoded.npy", np.ones(1, dtype=m.DTYPE))
+            with self.assertRaisesRegex(ValueError, "Changed decoded poses"):
+                m.decode_all(root, workers=1)
+
     def test_partition_and_cube_controls(self):
         from dexgrasp.test.directions import cube_directions
         with tempfile.TemporaryDirectory() as temp:

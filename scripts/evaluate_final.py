@@ -5,33 +5,17 @@ Artifacts are NumPy arrays, atomic progress and audited summaries; no physics.
 """
 import argparse
 from concurrent.futures import ProcessPoolExecutor
-from datetime import datetime, timezone
-import hashlib
 import json
 import multiprocessing as mp
 import os
 from pathlib import Path
-import sqlite3
 import subprocess
 import sys
 import time
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 BASE = Path(__file__).resolve().parents[2]
-DTYPE = np.dtype([('finite','?'),('decoded','?'),('fit','?'),('direction_pass','?'),
-                  ('mean_mm','f4'),('max_mm','f4'),('angle_deg','f4'),('ik_seconds','f4'),
-                  ('q','f4',(22,)),('R','f4',(3,3)),('t','f4',(3,))])
-
-def save(path, value):
-    p=Path(path); tmp=p.with_suffix('.partial'); tmp.write_text(json.dumps(value,indent=2,allow_nan=False)+'\n'); tmp.replace(p)
-
-def digest(path):
-    h=hashlib.sha256()
-    with Path(path).open('rb') as f:
-        for b in iter(lambda:f.read(8<<20),b''): h.update(b)
-    return h.hexdigest()
-
-def now(): return datetime.now(timezone.utc).isoformat()
+from dexgrasp.test.frozen import DTYPE, decode_shard, digest, init_decode, load_decoded_shard, now, save
 
 def prepare(out):
     from dexgrasp.data.formal_corpus import verified_packed_identity
@@ -43,14 +27,16 @@ def prepare(out):
     out.mkdir(parents=True,exist_ok=False)
     identity=verified_packed_identity(root,.2)
     rows=np.load(root/'test_rows.npy'); np.save(out/'test_rows.npy',rows)
-    with sqlite3.connect(f'file:{BASE}/outputs/site_formal_20261111/viewer.sqlite?mode=ro',uri=True) as c:
-        meta=json.loads(c.execute('SELECT value FROM metadata').fetchone()[0])
-        assert meta['packed_sha256']==identity['packed_sha256']
-        objs=c.execute("SELECT object_index,object_id FROM objects WHERE split='test' ORDER BY object_id").fetchall()
-        full=c.execute("SELECT row_id,object_index FROM samples JOIN objects USING(object_index) WHERE split='test' ORDER BY row_id").fetchall()
-    full=np.asarray(full,dtype=np.int64); assert np.array_equal(rows,full[:,0])
-    lookup={k:i for i,(k,_) in enumerate(objs)}
-    oi=np.array([lookup[k] for k in full[:,1]],dtype=np.int32); np.save(out/'object_indices.npy',oi)
+    from dexgrasp.data.source_objects import observation_objects, split_objects
+    objs = split_objects(root, identity, 'test')
+    observation = np.load(root/'observation_index.npy', mmap_mode='r')[rows]
+    unique, inverse = np.unique(observation, return_inverse=True)
+    labels = observation_objects(BASE/'data/source_packages', identity, unique)
+    lookup = {name: i for i, name in enumerate(objs)}
+    oi = np.array([lookup[obj] for obj, _ in labels], dtype=np.int32)[inverse]
+    if len(np.unique(oi)) != len(objs):
+        raise ValueError('Frozen rows do not cover every test object')
+    np.save(out/'object_indices.npy',oi)
     reps=np.array([rows[np.flatnonzero(oi==i)[0]] for i in range(len(objs))]); np.save(out/'direction_rows.npy',reps)
     directions=cube_directions(); jobs=[]
     for gi,g in enumerate('ABCD'):
@@ -62,7 +48,7 @@ def prepare(out):
         jobs.append(dict(group=g,checkpoint=str(ckpt),checkpoint_sha256=digest(ckpt),step=state['step'],gpus=[gi*2,gi*2+1],training_config=state['config']))
         del state
     plan=dict(schema='dexgrasp-final-full-v1',created_at=now(),root=str(root),data_identity=identity,source=source_state(),
-        jobs=jobs,objects=[o for _,o in objs],test_count=len(rows),direction_count=len(objs)*26,baseline_count=len(objs),directions=directions,
+        jobs=jobs,objects=objs,test_count=len(rows),direction_count=len(objs)*26,baseline_count=len(objs),directions=directions,
         split='test',candidates=1,sampling_steps=20,seed=8401,precision='BF16 autocast; FP32 ODE accumulation',
         noise='test: CPU generator(seed + packed row); cube: same noise from seed + representative packed row across 26 commands plus original-label baseline; identical across models',
         direction_selection='lowest packed test row per object; all 407 test objects; one fixed observation per object',
@@ -153,57 +139,35 @@ def infer(out,group,rank):
     update(stage='inference_completed')
 
 
-_DEC=None
-_DECODE_CACHE={}
-
-def init_decode(spec):
-    global _DEC
-    from dexgrasp.test.formal import official_hand
-    _DEC=official_hand(spec)
-
-def decode_chunk(job):
-    from dexgrasp.test.metrics import decode_metrics
-    path,start,end=job; p=Path(path)
-    if path not in _DECODE_CACHE:
-        _DECODE_CACHE.clear()
-        with np.load(p/'index.npz') as index: dirs=index['directions']
-        _DECODE_CACHE[path]=(np.load(p/'keypoints.npy'),dirs)
-    k,d=_DECODE_CACHE[path]
-    result=np.zeros(end-start,dtype=DTYPE)
-    for i in range(start,end):
-        r=decode_metrics(k[i],_DEC,d[i]); j=i-start
-        for a,b in [('finite','finite_output'),('decoded','decoded'),('fit','fit_success'),('direction_pass','direction_pass')]:result[a][j]=r[b]
-        for a,b in [('mean_mm','mean_keypoint_error_mm'),('max_mm','max_keypoint_error_mm'),('angle_deg','direction_error_deg'),('ik_seconds','ik_seconds')]: result[a][j]=r.get(b,np.nan)
-        for key in ('q','R','t'):result[key][j]=r.get(key,np.nan)
-    return start,result
-
-
-def decode_all(out,workers):
-    plan=json.loads((out/'plan.json').read_text()); paths=[]
-    for mode in ('directions','test'):
-        for g in 'ABCD':
-            for rank in range(2):paths.append(out/g/f'rank{rank}'/mode)
-    with ProcessPoolExecutor(workers,mp_context=mp.get_context('spawn'),initializer=init_decode,initargs=(str(Path(plan['root'])/'hand/hand_spec.json'),)) as pool:
-        for p in paths:
-            if (p/'decoded.done.json').exists():continue
-            n=len(np.load(p/'keypoints.npy',mmap_mode='r')); target=np.zeros(n,dtype=DTYPE)
-            tick=time.time(); done=0; last_update=0
-            # Bounded submission: no 1.7 million result objects kept in RAM.
-            jobs=((str(p),s,min(n,s+256)) for s in range(0,n,256))
-            for start,value in pool.map(decode_chunk,jobs,chunksize=1):
-                target[start:start+len(value)]=value; done+=len(value)
-                if time.time()-last_update>=2 or done==n:
-                    save(p/'decode_progress.json',dict(completed=done,total=n,workers=workers,seconds=time.time()-tick,updated_at=now()))
-                    last_update=time.time()
-            np.save(p/'decoded.npy',target); save(p/'decoded.done.json',dict(count=n,sha256=digest(p/'decoded.npy'),seconds=time.time()-tick))
-            aggregate(out,p.parent.parent.name,p.name)
+def decode_all(out, workers):
+    plan = json.loads((out / "plan.json").read_text())
+    hand_spec = Path(plan["root"]) / "hand/hand_spec.json"
+    with ProcessPoolExecutor(
+        workers, mp_context=mp.get_context("spawn"), initializer=init_decode, initargs=(str(hand_spec),)
+    ) as pool:
+        for mode in ("directions", "test"):
+            for group in "ABCD":
+                needs_summary = not (out / group / f"{mode}_summary.json").is_file()
+                for rank in (0, 1):
+                    folder = out / group / f"rank{rank}" / mode
+                    if (folder / "decoded.done.json").is_file():
+                        load_decoded_shard(folder)
+                    else:
+                        decode_shard(folder, pool, chunk_size=256, progress_workers=workers)
+                        needs_summary = True
+                if needs_summary:
+                    aggregate(out, group, mode)
 
 
 def aggregate(out,group,mode):
     plan=json.loads((out/'plan.json').read_text()); paths=[out/group/f'rank{r}'/mode for r in range(2)]
     if not all((p/'decoded.done.json').exists() for p in paths):return
-    pieces=[np.load(p/'decoded.npy') for p in paths]; inds=[np.load(p/'index.npz') for p in paths]
-    a=np.concatenate(pieces); objects=np.concatenate([x['objects'] for x in inds]); commands=np.concatenate([x['commands'] for x in inds])
+    a = np.concatenate([np.load(p / 'decoded.npy', mmap_mode='r') for p in paths])
+    metadata = []
+    for p in paths:
+        with np.load(p / 'index.npz') as index:
+            metadata.append((index['objects'], index['commands']))
+    objects, commands = (np.concatenate(parts) for parts in zip(*metadata))
     metrics={'finite_output_rate':'finite','decode_rate':'decoded','ik_fit_success_rate':'fit','direction_pass_rate_10deg':'direction_pass','mean_keypoint_error_mm':'mean_mm','mean_max_keypoint_error_mm':'max_mm','direction_angular_error_deg':'angle_deg'}
     split=json.loads((Path(plan['root'])/'split_protocol.json').read_text()); groups=[split['object_groups'][obj] for obj in plan['objects']]
     unique=sorted(set(groups)); bootstrap=np.random.default_rng(7301).integers(len(unique),size=(2000,len(unique)))
@@ -216,7 +180,8 @@ def aggregate(out,group,mode):
             per.append(dict(object_id=plan['objects'][obj],asset_group=groups[obj],candidates=len(part),**values))
         for k,v in metrics.items():
             vals=np.array([r[k] if r[k] is not None else np.nan for r in per]); grouped=np.array([np.nanmean([r[k] for r in per if r['asset_group']==g and r[k] is not None]) if any(r['asset_group']==g and r[k] is not None for r in per) else np.nan for g in unique])
-            samples=np.nanmean(grouped[bootstrap],axis=1)
+            draws = grouped[bootstrap]
+            samples = np.nanmean(draws[np.isfinite(draws).any(axis=1)], axis=1)
             macro[k]=dict(mean=float(np.nanmean(vals)) if np.isfinite(vals).any() else None,ci95=np.nanquantile(samples,[.025,.975]).tolist() if np.isfinite(samples).any() else None,coverage=float(np.isfinite(data[v]).mean()))
         return dict(candidates=len(data),objects=len(per),macro=macro,per_object=per)
     main=summary(np.ones(len(a),bool) if mode=='test' else commands<26)

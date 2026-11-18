@@ -87,3 +87,15 @@ checksum-pinned NVIDIA MinkowskiEngine 0.5.4 source in `minkowski-source.json`.
 It includes CUDA 12/CCCL/GCC compatibility and links the image scipy-openblas32
 BLAS symbols. It is a complete alternative to `minkowski-cuda12.patch`, not an
 additional patch to apply on top. NVIDIA MIT license: `licenses/MinkowskiEngine-LICENSE.txt`.
+
+The single-pose control adapter in `dexgrasp/test/dexonomy_control.py` adapts
+the pregrasp margin rollout and contact-QP squeeze calculation from
+`dexonomy/op/gen_grasp.py` in Dexonomy by Jiayi Chen, Yubin Ke, Lin Peng and
+He Wang. The local adapter starts at a supplied grasp and records a hold fallback
+when contact or a feasible wrench is unavailable. The upstream release declares
+CC BY-NC 4.0. [Dexonomy source and license](https://github.com/JYChen18/Dexonomy/tree/d561ff9df8545deef7a3f9e7cfb4045ef66f6913)
+
+The native source-task evaluator calls the integrated Dexonomy resident refinement,
+contact QP, Floating and Tabletop implementations listed in
+`simulation/SOURCES.json`. Their original notices and license are included in
+`simulation/NOTICE.md` and `simulation/licenses/`.

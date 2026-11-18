@@ -1,0 +1,6 @@
+# Weilun production solver family used on the RTX5090 source-profile calibration set.
+-r force-common.txt
+mujoco==3.17.0
+mujoco-warp==3.17.0
+warp-lang==1.16.0
+websockets>=13

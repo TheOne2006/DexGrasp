@@ -84,6 +84,8 @@ def floating_cpu(host, scene, data):
     import numpy as np
     from .op.eval_force_closure_warp import FORCE_DIRECTIONS, _candidate_trajectory, _interpolate_segment
     from .util.np_util import np_get_delta_pose
+    # A cached host can still contain the preceding candidate's final object pose.
+    host.reset_qpos(data["pregrasp_qpos"][0])
     controls, types, target = _candidate_trajectory(host, scene, data, False)
     directions = []
     def step(n):

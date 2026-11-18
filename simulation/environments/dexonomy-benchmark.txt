@@ -1,0 +1,3 @@
+# Public Dexonomy and DexGraspBench CPU evaluation.
+-r force-common.txt
+mujoco==3.3.3

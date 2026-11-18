@@ -18,7 +18,15 @@ def standard_batches():
             five_times_power *= 2
 
 
-def standard_boundary(start, fits):
+def standard_boundary(start, fits, *, fallback_1024=True):
+    def retry_below(high, low):
+        if fallback_1024 and high == 1024:
+            for fallback in (1000, 960):
+                if fits(fallback):
+                    return fallback, high
+                high = fallback
+        return low, high
+
     levels = standard_batches()
     seen = []
     for batch in levels:
@@ -33,13 +41,17 @@ def standard_boundary(start, fits):
             if index == len(seen):
                 seen.append(next(levels))
             if not fits(seen[index]):
-                return low, seen[index]
+                return retry_below(seen[index], low)
             low = seen[index]
-    high = seen[index]
+    low, high = retry_below(seen[index], 0)
+    if low:
+        return low, high
     for lower in reversed(seen[:index]):
         if fits(lower):
             return lower, high
-        high = lower
+        low, high = retry_below(lower, 0)
+        if low:
+            return low, high
     return 0, high
 
 
@@ -109,7 +121,7 @@ def main():
         low, high = standard_boundary(args.start, fits)
     summary = dict(max_pass_per_gpu=low, next_oom_per_gpu=high, ranks=args.ranks,
                    max_pass_global=low*args.ranks, next_oom_global=high*args.ranks,
-                   grid='exact' if exact else '2^n or 5*2^n',
+                   grid='exact' if exact else '2^n or 5*2^n, with 1000/960 fallback below 1024',
                    resolution=resolution if exact else None, trials=trials)
     (output/'capacity.json').write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary))

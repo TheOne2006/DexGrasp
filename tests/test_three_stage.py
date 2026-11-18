@@ -212,8 +212,12 @@ class ThreeStageModelTests(unittest.TestCase):
         self.assertEqual([(mc.geometry_bias, mc.direction_adaln, mc.use_gap) for mc in presets],
                          [(True, False, False), (True, False, True), (False, True, False), (False, True, True)])
         self.assertEqual(ModelConfig.from_file(files[0]).state_shape, (3, 21, 3))
-        with self.assertRaisesRegex(ValueError, 'unset V2 training settings.*batch_size'):
-            load_config(folder.parent/'train/three_stage_v2.template.json')
+        template = folder.parent/'train/three_stage_v2.template.json'
+        settings = json.loads(template.read_text())
+        self.assertEqual((settings['microbatch_size_per_device'], settings['gradient_accumulation_steps'],
+                          settings['checkpoint_transformer_blocks']), (840, 1, 2))
+        with self.assertRaisesRegex(ValueError, 'unset V2 training settings.*max_steps'):
+            load_config(template)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             path = root/'run.json'

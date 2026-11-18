@@ -10,8 +10,8 @@
   "device": "cuda:0",
   "precision": "bfloat16",
   "seed": null,
-  "microbatch_size_per_device": null,
-  "gradient_accumulation_steps": null,
+  "microbatch_size_per_device": 840,
+  "gradient_accumulation_steps": 1,
   "max_steps": null,
   "optimizer": "adamw",
   "lr": null,
@@ -28,5 +28,6 @@
   "fps_backend": "triton",
   "select_tokens_before_slice": true,
   "compile_transformer": true,
-  "checkpoint_direction_bias": true
+  "checkpoint_direction_bias": true,
+  "checkpoint_transformer_blocks": 2
 }

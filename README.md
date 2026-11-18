@@ -45,10 +45,12 @@ export TORCHINDUCTOR_COMPILE_THREADS=2
   scripts/benchmark_fake.py --model configs/paired_1125/A2.json --batch 256 \
   --compile --checkpoint-bias --warmup 3 --steps 12 --output ../outputs/example-A2-b256.json
 
-# 从指定微批开始搜索，默认精确到每卡一个候选
+# 从离 --start 最近的每卡档位开始，默认只测 2^n 或 5×2^n（等距取小档）
 ./scripts/python.sh scripts/sweep_fake_batches.py --ranks 4 --start 1024 \
   --model configs/paired_1125/A2.json --compile --checkpoint-bias --output-dir ../outputs/example-A2-capacity
 ```
+
+容量报告同时记录每卡微批、四卡或实际卡数对应的总 batch，以及实测 OOM 的相邻上档。比较速度时采用通过实测的档位，例如每卡 640 对应四卡 2,560，每卡 1,280 对应四卡 5,120。诊断整数边界时可显式使用 `--exact`。
 
 `--model KPGrasp` 加载本地上游 Final_base 的 Shadow 28 点模型、FP32 和原始 Muon 优化器分组。需要在当前解释器可导入上游训练依赖，并用 `--kpgrasp-root` 指定可选的源码位置。双路残差测速的 `--frozen-grasp` 和 `--hand-spec` 与 smoke 相同。一次测速使用相同的一批合成球面点云反复做 H2D，每次重新采样 FM 噪声和时间，统计同步前后向、裁剪和真实优化器更新。按最慢 rank 的稳态墙钟计算整机吞吐，记录 PyTorch 峰值和每 40 ms 采样的整卡显存。合成 HDF5 读盘、保存及 IK 通过另一条 smoke 命令验证。
 

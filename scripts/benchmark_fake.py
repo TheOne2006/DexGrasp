@@ -15,7 +15,7 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-if 'LOCAL_RANK' in os.environ:
+if __name__ == '__main__' and 'LOCAL_RANK' in os.environ:
     devices = os.environ.get('CUDA_VISIBLE_DEVICES', ','.join(map(str, range(int(os.environ['LOCAL_WORLD_SIZE'])))))
     os.environ['CUDA_VISIBLE_DEVICES'] = devices.split(',')[int(os.environ['LOCAL_RANK'])]
 sys.path.insert(0, str(ROOT))

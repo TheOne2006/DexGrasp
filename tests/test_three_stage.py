@@ -257,7 +257,10 @@ class PairedDataTests(unittest.TestCase):
         self.assertEqual(batch['keypoints_gt'].shape, (2, 3, 21, 3))
         samples = loader.dataset.__getitems__([1, 0, 1])
         for sample_index, source_index in enumerate([1, 0, 1]):
-            torch.testing.assert_close(samples[sample_index]['keypoints_gt'], dataset[source_index]['keypoints_gt'])
+            expected = dataset[source_index]
+            torch.testing.assert_close(samples['keypoints_gt'][sample_index], expected['keypoints_gt'])
+            for key, values in samples['condition'].items():
+                torch.testing.assert_close(values[sample_index], expected['condition'][key])
         dataset.close()
         loader.dataset.close()
         identity = audit_dataset(self.root, dataset_format='data_v2')

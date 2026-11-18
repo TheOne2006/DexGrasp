@@ -16,6 +16,7 @@ class FrozenResidualConfig:
     grasp_model: dict = field(default_factory=dict)
     hand_reference_length_m: float = 0.0
     grasp_steps: int = 20
+    parent_depth_label: str | None = None
     checkpoint_schema = 'dexgrasp-frozen-residual-v1'
     state_shape = (3, 21, 3)
     stages = 3
@@ -35,6 +36,8 @@ class FrozenResidualConfig:
     def __post_init__(self):
         if self.parent.stages != 1 or self.parent.use_scene or self.parent.target != 'absolute':
             raise ValueError('frozen grasp requires a single-pose object-conditioned FM parent')
+        if self.parent.use_gap and self.parent_depth_label != 'h32':
+            raise ValueError('confirm parent_depth_label=h32 for a depth-enabled parent trained on this label')
         if type(self.grasp_steps) is not int or self.grasp_steps < 1:
             raise ValueError('grasp_steps must be positive')
 

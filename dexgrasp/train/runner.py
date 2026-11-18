@@ -134,7 +134,7 @@ def initialize_student(student, teacher):
 
 
 def initialize_checkpoint(model, path, identity, hand_hash):
-    state = torch.load(path, map_location='cpu', weights_only=False, mmap=True)
+    state = torch.load(path, map_location='cpu', weights_only=False)
     if model.cfg.family == 'frozen_grasp_residual':
         if (state.get('method') != 'fm' or state.get('step', 0) < 1 or state.get('schema') != 'dexgrasp-v1'
                 or config_from_settings(state['model_config']) != model.cfg.parent

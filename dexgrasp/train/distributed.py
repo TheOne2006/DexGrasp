@@ -88,7 +88,7 @@ def streaming_loader(cfg, model, world, rank, start, stop):
     if dataset_format in ('data_v1', 'data_v2'):
         dataset = hdf5_dataset(dataset_format)(cfg['dataset_root'], 'train', model.cfg.coord_scale_m,
                                observation_cache_size=cfg['observation_cache_size'],
-                               max_open_shards=cfg['max_open_shards'], condition_keys=model.cfg.condition_keys, training_only=True)
+                               max_open_shards=cfg['max_open_shards'], condition_keys=model.cfg.condition_keys, training_only=True, batched_tensors=True)
     else:
         from ..data.packed import PackedTrainingDataset
         from ..data.object_corpus import ObjectCorpusDataset
@@ -125,10 +125,10 @@ def cache_training_data(cfg, model):
     device = next(model.parameters()).device
     dataset = hdf5_dataset(cfg.get('dataset_format', 'data_v1'))(cfg['dataset_root'], 'train', model.cfg.coord_scale_m,
                            observation_cache_size=cfg['observation_cache_size'],
-                           max_open_shards=cfg['max_open_shards'], condition_keys=model.cfg.condition_keys, training_only=True)
+                           max_open_shards=cfg['max_open_shards'], condition_keys=model.cfg.condition_keys, training_only=True, batched_tensors=True)
     chunks, targets = {}, []
     try:
-        for batch in DataLoader(dataset, batch_size=128, shuffle=False, num_workers=0):
+        for batch in DataLoader(dataset, batch_size=128, shuffle=False, num_workers=0, collate_fn=training_collate):
             for key, tensor in batch['condition'].items():
                 chunks.setdefault(key, []).append(tensor)
             targets.append(batch['keypoints_gt'])

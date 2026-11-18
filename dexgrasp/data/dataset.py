@@ -156,9 +156,12 @@ class GraspDataset(Dataset):
     default_conditions = ('object_points', 'scene_points', 'scene_mask', 'palm_gap', 'grasp_direction_cmd')
 
     def __init__(self, root, split, coord_scale_m, *, observation_cache_size=64, max_open_shards=8,
-                 condition_keys=None, training_only=False):
+                 condition_keys=None, training_only=False, batched_tensors=False):
         self.root, self.split = Path(root).resolve(), split
         self.training_only = training_only
+        self.batched_tensors = batched_tensors
+        if batched_tensors and not training_only:
+            raise ValueError('batched_tensors is for training-only rows')
         self.condition_keys = self.default_conditions if condition_keys is None else tuple(condition_keys)
         if ('object_points' not in self.condition_keys
                 or set(self.condition_keys) - set(self.default_conditions)):
@@ -283,7 +286,8 @@ class GraspDataset(Dataset):
         for position, index in enumerate(indices):
             row = self.rows[index]
             groups.setdefault(row['shard'], []).append((position, row['grasp_index']))
-        result = [None] * len(indices)
+        columns = {}
+        result = [] if self.batched_tensors else [None] * len(indices)
         for shard, entries in groups.items():
             f = self._file(shard)
             unique, inverse = np.unique([gi for _, gi in entries], return_inverse=True)
@@ -304,6 +308,20 @@ class GraspDataset(Dataset):
             gaps = grasps[self.grasp_fields['h']][unique] if self.depth_key in self.condition_keys else None
             if not np.isfinite(targets).all() or (directions is not None and not np.isfinite(directions).all()):
                 raise ValueError('nonfinite training targets/directions')
+            if self.batched_tensors:
+                # Gather once per column instead of creating and collating B Python dicts.
+                positions = np.fromiter((pos for pos, _ in entries), dtype=np.intp)
+                fields = {k: (v, obs_inverse[inverse]) for k, v in clouds.items()}
+                fields['keypoints_gt'] = (targets, inverse)
+                if directions is not None:
+                    fields['grasp_direction_cmd'] = (directions, inverse)
+                if gaps is not None:
+                    fields[self.depth_key] = (gaps, inverse)
+                for name, (values, rows) in fields.items():
+                    if name not in columns:
+                        columns[name] = np.empty((len(indices), *values.shape[1:]), dtype=values.dtype)
+                    columns[name][positions] = values[rows]
+                continue
             for (position, _), gi in zip(entries, inverse):
                 oi = obs_inverse[gi]
                 condition = {k: torch.from_numpy(v[oi]) for k, v in clouds.items()}
@@ -312,6 +330,9 @@ class GraspDataset(Dataset):
                 if gaps is not None:
                     condition[self.depth_key] = torch.from_numpy(gaps[gi])
                 result[position] = dict(condition=condition, keypoints_gt=torch.from_numpy(targets[gi]))
+        if self.batched_tensors:
+            target = torch.from_numpy(columns.pop('keypoints_gt'))
+            return dict(condition={k: torch.from_numpy(v) for k, v in columns.items()}, keypoints_gt=target)
         return result
 
 

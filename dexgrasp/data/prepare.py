@@ -65,10 +65,12 @@ class ShardWriter:
         self.file.close()
 
 
-def scene_meshes(root, scene):
+def scene_meshes(root, scene, *, target_only=False):
     meshes, instances = {}, scene['instances']
     for instance in instances:
         key = instance['instance_id']
+        if target_only and key != scene['target_id']:
+            continue
         if key in meshes:
             raise ValueError('duplicate scene instance id')
         v, f = load_mesh(contained(root, instance['mesh']))
@@ -85,6 +87,8 @@ def scene_meshes(root, scene):
     if target_id not in meshes:
         raise ValueError('target instance not present')
     target = meshes[target_id]
+    if target_only:
+        return target
     environment = combine_meshes([mesh for key, mesh in meshes.items() if key != target_id])
     return target, environment
 

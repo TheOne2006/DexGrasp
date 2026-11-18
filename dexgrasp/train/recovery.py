@@ -1,6 +1,7 @@
 """Explicit optimizer/RNG-preserving forks for attention numerical repairs."""
 from pathlib import Path
 import torch
+from ..models.registry import config_from_settings
 
 
 def validate_recovery(state, cfg, identity, runtime, world, hand_hash, initial_hash):
@@ -9,7 +10,8 @@ def validate_recovery(state, cfg, identity, runtime, world, hand_hash, initial_h
     Source changes are intentional for a recovery fork, recorded in provenance;
     ordinary --resume continues to require byte-identical source and recipe.
     """
-    if (state.get('schema') != 'dexgrasp-v1' or state.get('method') != 'fm'
+    schema = config_from_settings(state['model_config']).checkpoint_schema if 'model_config' in state else 'dexgrasp-v1'
+    if (state.get('schema') != schema or state.get('method') != 'fm'
             or state['data_identity'] != identity or state['runtime'] != runtime
             or state['distributed']['world_size'] != world
             or state['hand_spec_sha256'] != hand_hash

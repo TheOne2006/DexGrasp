@@ -11,7 +11,7 @@ dependencies = ["torch>=2.2", "numpy==2.3.1", "h5py>=3.9", "scipy>=1.10"]
 
 [project.optional-dependencies]
 mesh = ["trimesh>=4"]
-eval = ["mujoco>=3.12,<4.1", "trimesh>=4", "coacd==1.0.7"]
+eval = ["mujoco>=3.12,<4.1", "trimesh>=4", "rtree", "coacd==1.0.7"]
 
 [project.scripts]
 dexgrasp = "dexgrasp.__main__:main"

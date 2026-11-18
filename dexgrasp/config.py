@@ -1,65 +1,11 @@
-"""Strict configuration for the user's v1, with no baseline fallbacks."""
-from dataclasses import asdict, dataclass, fields
+"""Training recipes and paths. Model structure is defined in models.config."""
+from dataclasses import fields
 import json
 import math
 from pathlib import Path
 
-
-MODEL_VARIANTS = (
-    'full', 'full_h_less', 'object_only', 'object_only_h_less',
-    'object_direction_adaln', 'object_direction_adaln_h_less',
-)
-
-
-@dataclass(frozen=True)
-class ModelConfig:
-    width: int = 512
-    depth: int = 8
-    heads: int = 8
-    tokens: int = 128
-    backbone_channels: int = 512
-    keypoints: int = 21
-    voxel_size_m: float = 0.005
-    coord_scale_m: float = 0.2
-    hand_reference_length_m: float = 0.0  # Must come from a calibrated hand spec.
-    variant: str = 'full'
-    self_attention_backend: str = 'auto'
-
-    @property
-    def use_scene(self):
-        return self.variant in ('full', 'full_h_less')
-
-    @property
-    def use_gap(self):
-        return not self.variant.endswith('_h_less')
-
-    @property
-    def direction_adaln(self):
-        return self.variant.startswith('object_direction_adaln')
-
-    @property
-    def condition_keys(self):
-        keys = ['object_points', 'grasp_direction_cmd']
-        if self.use_scene:
-            keys.extend(('scene_points', 'scene_mask'))
-        if self.use_gap:
-            keys.append('palm_gap')
-        return tuple(keys)
-
-    def __post_init__(self):
-        if self.self_attention_backend not in ('auto', 'centered_fp32'):
-            raise ValueError('unknown self-attention backend')
-        if self.variant not in MODEL_VARIANTS:
-            raise ValueError(f'unknown model variant: {self.variant!r}')
-        for key in ('width', 'depth', 'heads', 'tokens', 'backbone_channels', 'keypoints'):
-            if type(getattr(self, key)) is not int or getattr(self, key) < 1:
-                raise ValueError(f'{key} must be a positive integer')
-        if self.width % self.heads or self.keypoints != 21 or self.tokens > 1024:
-            raise ValueError('invalid attention dimensions or Sharpa keypoint count')
-        for key in ('voxel_size_m', 'coord_scale_m', 'hand_reference_length_m'):
-            value = getattr(self, key)
-            if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
-                raise ValueError(f'{key} must be calibrated, finite and positive')
+from .models.config import MODEL_VARIANTS, STAGE_ORDER, ModelConfig, read_model_settings
+from .models.registry import config_from_settings, model_branch
 
 
 DEFAULT_RUN = dict(
@@ -79,12 +25,40 @@ DEFAULT_RUN = dict(
     abort_grad_norm=0.0,
 )
 
+BATCH_FIELDS = {'batch_size': 'microbatch_size_per_device', 'accumulation': 'gradient_accumulation_steps'}
+
 
 def load_config(path):
     path = Path(path).resolve()
     raw = json.loads(path.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError('expected a training configuration')
+    if 'model_config' in raw and 'model' in raw:
+        raise ValueError('use either model_config (a recipe path) or an inline model')
+    for internal, public in BATCH_FIELDS.items():
+        if public in raw:
+            if internal in raw:
+                raise ValueError(f'use only one of {public} and {internal}')
+            raw[internal] = raw.pop(public)
+    if raw.get('dataset_format') == 'data_v2':
+        # V2 has no agreed training recipe. Do not inherit the historical V1 experiment budget.
+        required = {'batch_size', 'accumulation', 'max_steps', 'optimizer', 'lr', 'weight_decay',
+                    'lr_schedule', 'precision'}
+        if raw.get('lr_schedule') == 'warmup_cosine':
+            required.update(('warmup_steps', 'warmup_start_factor', 'lr_min'))
+        missing = {key for key in required if raw.get(key) is None}
+        missing.update(key for key, value in raw.items() if value is None and key not in
+                       ('initial_checkpoint', 'teacher_checkpoint', 'official_test_root', 'data_audit'))
+        if missing:
+            names = sorted(BATCH_FIELDS.get(key, key) for key in missing)
+            raise ValueError(f'unset V2 training settings: {", ".join(names)}')
+    if 'model_config' in raw:
+        model_path = raw.pop('model_config')
+        if not isinstance(model_path, str) or not model_path:
+            raise ValueError('model_config must be a model recipe path')
+        raw['model'] = read_model_settings(path.parent / model_path)
     allowed = set(DEFAULT_RUN) | {'model', 'dataset_root', 'hand_spec', 'run_dir',
-                                 'checkpoint_dir', 'teacher_checkpoint', 'initial_checkpoint', 'data_audit'}
+                                 'checkpoint_dir', 'teacher_checkpoint', 'initial_checkpoint', 'data_audit', 'official_test_root'}
     if set(raw) - allowed:
         raise ValueError(f'unknown config keys: {sorted(set(raw) - allowed)}')
     cfg = {**DEFAULT_RUN, **raw}
@@ -115,7 +89,7 @@ def load_config(path):
     for key in ('lr', 'weight_decay', 'grad_clip', 'full_interval_probability', 'muon_lr', 'muon_momentum', 'abort_grad_norm'):
         if not isinstance(cfg[key], (int, float)) or not math.isfinite(cfg[key]):
             raise ValueError(f'{key} must be finite')
-    if cfg['dataset_format'] not in ('data_v1', 'object_corpus', 'packed'):
+    if cfg['dataset_format'] not in ('data_v1', 'data_v2', 'object_corpus', 'packed'):
         raise ValueError('unsupported dataset_format')
     if cfg['data_loading'] not in ('stream', 'gpu_cache'):
         raise ValueError('data_loading must be stream or gpu_cache')
@@ -136,10 +110,13 @@ def load_config(path):
     if cfg['precision'] not in ('float32', 'bfloat16') or cfg['teacher_solver'] not in ('euler', 'heun'):
         raise ValueError('unsupported precision or ODE solver')
     model = cfg.get('model', {})
-    if set(model) - {f.name for f in fields(ModelConfig)}:
+    branch = model_branch(model.get('family', 'keypoint_flow'))
+    if set(model) - {f.name for f in fields(branch.config_type)}:
         raise ValueError('unknown model config keys')
-    if model.get('variant', 'full') not in MODEL_VARIANTS:
-        raise ValueError('unknown model variant')
+    if cfg['method'] not in branch.default_steps:
+        raise ValueError(f'method {cfg["method"]!r} is unavailable for the selected model family')
+    if hasattr(branch.config_type, 'validate_recipe'):
+        branch.config_type.validate_recipe(model, cfg['dataset_format'])
     # Hand length is loaded from hand_spec at plan/run time, never guessed here.
     if 'hand_reference_length_m' in model:
         raise ValueError('hand_reference_length_m belongs in the calibrated hand_spec')
@@ -162,8 +139,10 @@ def load_config(path):
         cfg['initial_checkpoint'] = str((path.parent / initial).resolve())
     if cfg.get('data_audit'):
         cfg['data_audit'] = str((path.parent / cfg['data_audit']).resolve())
+    if cfg.get('official_test_root'):
+        cfg['official_test_root'] = str((path.parent / cfg['official_test_root']).resolve())
     return cfg
 
 
 def model_config(cfg, hand_spec):
-    return ModelConfig(**cfg['model'], hand_reference_length_m=hand_spec['reference_length_m'])
+    return config_from_settings(cfg['model'], hand_spec)

@@ -13,7 +13,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 from dexgrasp.config import load_config, model_config
 from dexgrasp.geometry.hand import URDFHand
-from dexgrasp.models.keypoint import KeypointModel
+from dexgrasp.models.registry import build_model
 from dexgrasp.train.distributed import FMLossModule, streaming_loader, state_digest
 from dexgrasp.train.execution import configure_execution
 from dexgrasp.train.optimizers import make_optimizer
@@ -48,7 +48,7 @@ def main():
             (out/'provenance.json').write_text(json.dumps(dict(config=cfg,source=source_state(),runtime=runtime_identity(),scope='disposable real optimizer updates; no quality evaluation'),indent=2))
         dist.barrier()
         hand = URDFHand(cfg['hand_spec'])
-        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(KeypointModel(model_config(cfg, hand.spec)).to(device))
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(build_model(model_config(cfg, hand.spec), 'fm').to(device))
         ddp = DistributedDataParallel(FMLossModule(model), device_ids=[local], broadcast_buffers=False, gradient_as_bucket_view=True)
         configure_execution(model, cfg)
         optimizer = make_optimizer(model, cfg, fused=True)

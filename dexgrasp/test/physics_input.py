@@ -1,27 +1,37 @@
 """Export decoded world-frame poses without importing training or simulation.
 
-Controls are supplied explicitly by the caller: decoding q does not define a
-pregrasp or squeeze policy. Object scale belongs to the scene, never the hand.
+Three-stage candidates carry their own control targets. Single-frame candidates
+require explicit pregrasp and squeeze controls. Object scale belongs to the scene.
 """
 import hashlib
 import json
 from pathlib import Path
+from ..models.config import STAGE_ORDER
 
 
 def export_request(decoded, output, *, protocol, hand_xml, joint_names, scenes,
-                   controls, control_source, frame_transforms):
+                   frame_transforms, controls=None, control_source=None):
     """scenes maps scene_id to trusted scene path; controls maps (sample,candidate).
 
     Each controls entry contains pregrasp and squeeze, each with R/t/q in world
     metres/radians. joint_names describes q in all three poses. Failed decodes
     remain in the denominator as invalid_input rows.
     """
-    if protocol not in ('floating', 'tabletop') or not control_source:
-        raise ValueError('explicit protocol and control_source required')
+    if protocol not in ('floating', 'tabletop'):
+        raise ValueError('explicit floating or tabletop protocol required')
     if len(joint_names) != 22 or len(set(joint_names)) != 22:
         raise ValueError('22 unique joint names required')
     source = Path(decoded).read_bytes()
     rows = [json.loads(x) for x in source.splitlines() if x.strip()]
+    staged = bool(rows) and 'stages' in rows[0]
+    if any(('stages' in row) != staged for row in rows):
+        raise ValueError('mixed single-frame and three-stage candidates')
+    if staged:
+        if controls is not None:
+            raise ValueError('three-stage export uses the decoded model targets')
+        control_source = 'generated_pregrasp_grasp_squeeze'
+    elif controls is None or not control_source:
+        raise ValueError('single-frame predictions require explicit controls and control_source')
     candidates, seen = [], set()
     for row in rows:
         key = row['sample_index'], row['candidate_index']
@@ -31,6 +41,9 @@ def export_request(decoded, output, *, protocol, hand_xml, joint_names, scenes,
         item = dict(sample_index=key[0], candidate_index=key[1], scene=scenes[row['scene_id']])
         if row.get('ik_success') is not True or row.get('joint_limits_valid') is not True:
             item['invalid_reason'] = 'decode_or_joint_limits_failed'
+        elif staged:
+            transform = frame_transforms[row['scene_id']]
+            item.update({stage: world_hand_pose(row['stages'][stage], **transform) for stage in STAGE_ORDER})
         else:
             supplied = controls[key]
             item.update(grasp=world_hand_pose(row, **frame_transforms[row['scene_id']]),

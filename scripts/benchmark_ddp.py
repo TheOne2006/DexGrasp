@@ -15,7 +15,7 @@ from dexgrasp.config import load_config, model_config
 from dexgrasp.geometry.hand import URDFHand
 from dexgrasp.train.distributed import FMLossModule, cache_training_data, cached_batch, GlobalBatchStream, streaming_loader
 from dexgrasp.train.runner import source_state, runtime_identity, move_batch
-from dexgrasp.models.keypoint import KeypointModel
+from dexgrasp.models.registry import build_model
 from dexgrasp.train.optimizers import make_optimizer
 from dexgrasp.train.execution import configure_execution
 
@@ -43,7 +43,7 @@ def main():
     try:
         hand = URDFHand(cfg['hand_spec'])
         mc = model_config(cfg, hand.spec)
-        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(KeypointModel(mc).to(device))
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(build_model(mc, 'fm').to(device))
         ddp = DDP(FMLossModule(model), device_ids=[local], broadcast_buffers=False, gradient_as_bucket_view=True)
         configure_execution(model, cfg)
         optimizer = make_optimizer(model, cfg, fused=True)

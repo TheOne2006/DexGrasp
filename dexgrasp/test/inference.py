@@ -1,15 +1,15 @@
 """Inference on new raw scene points without a labelled training dataset."""
 import torch
-from ..train.objectives import sample_keypoints
+from ..models.registry import sample_model
 
 
 @torch.no_grad()
 def predict(model, raw_condition, *, candidates=1, steps=None, noise=None):
-    """Batched raw inputs in metres; returns K[B,C,21,3] in the same scene frame.
+    """Return metric K[B,C,21,3] (v1) or K[B,C,3,21,3] (pregrasp, grasp, squeeze).
 
-    Required fields: object_points[B,1024,3], grasp_direction_cmd[B,3].
+    All models require object_points[B,1024,3]. Direction branches require grasp_direction_cmd[B,3].
     full variants also require scene_points[B,2048,3], scene_mask[B,2048].
-    Variants without the h_less suffix also require palm_gap[B,1] in metres.
+    Depth-conditioned models require palm_gap (v1) or grasp-frame h32 (v2), [B,1] in metres.
     wrist-z-v2 checkpoints require scene-frame official +Zh (wrist toward fingers);
     legacy checkpoints retain their original palm-normal condition.
     This function does not infer visibility, segment targets or perform physical checks.
@@ -23,10 +23,16 @@ def predict(model, raw_condition, *, candidates=1, steps=None, noise=None):
         raise ValueError('raw object_points must be [B,1024,3]')
     # Accumulate the center in float64, matching the dataset's NumPy normalization.
     center = points.double().mean(1).float()
-    for key in (('object_points', 'scene_points') if model.cfg.use_scene else ('object_points',)):
-        condition[key] = (condition[key]-center[:, None])/model.cfg.coord_scale_m
+    for key in ('object_points', 'scene_points'):
+        if key in condition:
+            condition[key] = (condition[key]-center[:, None])/model.cfg.coord_scale_m
     if noise is not None:
         noise = torch.as_tensor(noise, dtype=torch.float32, device=device)
-    steps = (10 if model.method == 'fm' else 1) if steps is None else steps
-    generated = sample_keypoints(model, condition, steps=steps, candidates=candidates, noise=noise)
-    return generated.reshape(len(points), candidates, 21, 3)*model.cfg.coord_scale_m+center[:, None, None]
+    generated = sample_model(model, condition, steps=steps, candidates=candidates, noise=noise)
+    return world_keypoints(generated, center, model.cfg.coord_scale_m, candidates)
+
+
+def world_keypoints(generated, center, scale, candidates):
+    poses = generated.unflatten(0, (len(center), candidates))
+    origin = center.view(len(center), *([1] * (poses.ndim - 2)), 3)
+    return poses * scale + origin

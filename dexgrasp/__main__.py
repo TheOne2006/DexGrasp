@@ -13,6 +13,8 @@ def main(argv=None):
     audit = sub.add_parser('audit-data')
     audit.add_argument('--root', required=True)
     audit.add_argument('--coord-scale-m', type=float, default=0.2)
+    audit.add_argument('--dataset-format', choices=('data_v1', 'data_v2'), default='data_v1')
+    audit.add_argument('--official-test-root')
     for name in ('plan', 'train'):
         p = sub.add_parser(name)
         p.add_argument('--config', required=True)
@@ -30,7 +32,7 @@ def main(argv=None):
     sample.add_argument('--batch-size', type=int, default=8)
     sample.add_argument('--device', default='cpu')
     sample.add_argument('--seed', type=int, default=0)
-    sample.add_argument('--palm-gap-m', type=float)
+    sample.add_argument('--palm-gap-m', '--h32-m', type=float)
     sample.add_argument('--direction', type=float, nargs=3)
     decode = sub.add_parser('decode')
     decode.add_argument('--samples', required=True)
@@ -52,7 +54,8 @@ def main(argv=None):
             result = prepare_dataset(args.root, seed=args.seed, grasps_per_shard=args.grasps_per_shard)
         elif args.command == 'audit-data':
             from .data.dataset import audit_dataset
-            result = audit_dataset(args.root, args.coord_scale_m)
+            result = audit_dataset(args.root, args.coord_scale_m, dataset_format=args.dataset_format,
+                                   official_test_root=args.official_test_root)
         elif args.command in ('plan', 'train'):
             from .config import load_config
             from .train.runner import plan, run

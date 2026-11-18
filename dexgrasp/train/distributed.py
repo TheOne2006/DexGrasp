@@ -20,16 +20,15 @@ from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_collate
 
 from ..config import load_config, model_config
-from ..data.dataset import GraspDataset, audit_dataset, sha256
+from ..data.dataset import hdf5_dataset, audit_dataset, sha256
 from ..data.audit_receipt import verified_identity
 from ..geometry.hand import URDFHand
-from ..models.encoders import farthest_point_indices
-from ..models.keypoint import KeypointModel
+from ..models.registry import build_model
 from .objectives import fm_loss
 from .optimizers import make_optimizer
 from .schedule import apply_learning_rate
 from .execution import configure_execution
-from .runner import atomic_checkpoint, initialize_checkpoint, runtime_identity, source_state, move_batch
+from .runner import atomic_checkpoint, autocast, initialize_checkpoint, runtime_identity, source_state, move_batch
 from .checkpoints import ARCHIVE_EVERY
 from .recovery import validate_recovery
 
@@ -84,8 +83,9 @@ def training_collate(samples):
 
 
 def streaming_loader(cfg, model, world, rank, start, stop):
-    if cfg.get('dataset_format', 'data_v1') == 'data_v1':
-        dataset = GraspDataset(cfg['dataset_root'], 'train', model.cfg.coord_scale_m,
+    dataset_format = cfg.get('dataset_format', 'data_v1')
+    if dataset_format in ('data_v1', 'data_v2'):
+        dataset = hdf5_dataset(dataset_format)(cfg['dataset_root'], 'train', model.cfg.coord_scale_m,
                                observation_cache_size=cfg['observation_cache_size'],
                                max_open_shards=cfg['max_open_shards'], condition_keys=model.cfg.condition_keys, training_only=True)
     else:
@@ -122,7 +122,7 @@ class FMLossModule(nn.Module):
 def cache_training_data(cfg, model):
     # This optimization is valid for this fixed, precomputed dataset: no online augmentation.
     device = next(model.parameters()).device
-    dataset = GraspDataset(cfg['dataset_root'], 'train', model.cfg.coord_scale_m,
+    dataset = hdf5_dataset(cfg.get('dataset_format', 'data_v1'))(cfg['dataset_root'], 'train', model.cfg.coord_scale_m,
                            observation_cache_size=cfg['observation_cache_size'],
                            max_open_shards=cfg['max_open_shards'], condition_keys=model.cfg.condition_keys, training_only=True)
     chunks, targets = {}, []
@@ -134,10 +134,8 @@ def cache_training_data(cfg, model):
     finally:
         dataset.close()
     condition = {key: torch.cat(values).to(device) for key, values in chunks.items()}
-    for prefix in (('object', 'scene') if model.cfg.use_scene else ('object',)):
-        points = condition[prefix+'_points']
-        condition[prefix+'_fps_indices'] = torch.cat([
-            farthest_point_indices(chunk, model.cfg.tokens) for chunk in points.split(128)])
+    if hasattr(model, 'cache_condition_indices'):
+        model.cache_condition_indices(condition)
     return dict(condition=condition, keypoints_gt=torch.cat(targets).to(device))
 
 
@@ -177,12 +175,12 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
     global_batch = cfg['batch_size'] * world * cfg['accumulation']
     if cfg['method'] != 'fm' or cfg['freeze_encoders'] or cfg['overfit_diagnostic']:
         raise ValueError('This runner trains all FM parameters and defers reconstruction evaluation')
-    if cfg['precision'] != 'bfloat16' or not torch.cuda.is_bf16_supported():
-        raise ValueError('This DDP experiment requires supported BF16')
     torch.set_num_threads(cfg['cpu_threads'])
     device_index = local_device_index()
     torch.cuda.set_device(device_index)
     device = torch.device('cuda', device_index)
+    if cfg['precision'] == 'bfloat16' and not torch.cuda.is_bf16_supported():
+        raise ValueError('BF16 is unsupported on the selected CUDA device')
     torch.set_float32_matmul_precision('high')
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
@@ -202,8 +200,11 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
                     from ..data.formal_corpus import verified_packed_identity
                     identity_box[0] = verified_packed_identity(cfg['dataset_root'], scale)
                 else:
-                    identity_box[0] = (verified_identity(cfg['dataset_root'], scale, cfg['data_audit'])
-                                   if cfg.get('data_audit') else audit_dataset(cfg['dataset_root'], scale, deep=True))
+                    audit_options = dict(dataset_format=cfg.get('dataset_format', 'data_v1'),
+                                         official_test_root=cfg.get('official_test_root'))
+                    identity_box[0] = (verified_identity(cfg['dataset_root'], scale, cfg['data_audit'], **audit_options)
+                                       if cfg.get('data_audit') else audit_dataset(cfg['dataset_root'], scale,
+                                                                                  **audit_options))
                 identity_box[0]['hand_urdf_sha256'] = sha256(hand.urdf_path)
             except Exception as exc:
                 identity_box[0] = {'audit_error': f'{type(exc).__name__}: {exc}'}
@@ -225,7 +226,7 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
                                        ('NCCL_P2P_DISABLE', 'NCCL_CUMEM_HOST_ENABLE', 'NCCL_CUMEM_ENABLE')}
         mc = model_config(cfg, hand.spec)
         random.seed(cfg['seed']); np.random.seed(cfg['seed']); torch.manual_seed(cfg['seed'])
-        model = KeypointModel(mc, 'fm').to(device)
+        model = build_model(mc, 'fm').to(device)
         if cfg['initialization'] not in ('random', 'checkpoint'):
             raise ValueError('DDP supports random or same-identity checkpoint initialization')
         initial_hash = (initialize_checkpoint(model, cfg['initial_checkpoint'], identity, hand_hash)
@@ -307,7 +308,7 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
                              else move_batch(next(batches), device))
                     sync = nullcontext() if micro == cfg['accumulation']-1 else ddp.no_sync()
                     with sync:
-                        with torch.autocast('cuda', dtype=torch.bfloat16):
+                        with autocast(cfg, device):
                             loss = ddp(batch) / cfg['accumulation']
                         loss.backward()
                     step_loss += loss.detach().float()
@@ -350,7 +351,7 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
                         if rank == 0:
                             (run_dir/'rank_consistency.json').write_text(json.dumps(checks, indent=2)+'\n')
                     if rank == 0:
-                        state = dict(schema='dexgrasp-v1', method='fm', step=step, config=cfg,
+                        state = dict(schema=mc.checkpoint_schema, method='fm', step=step, config=cfg,
                                      model_config=asdict(mc), model=model.state_dict(), optimizer=optimizer.state_dict(),
                                      scheduler=dict(kind=cfg['lr_schedule'], completed_steps=step, learning_rates=learning_rates),
                                      source=source, data_identity=identity, hand_spec_sha256=hand_hash,

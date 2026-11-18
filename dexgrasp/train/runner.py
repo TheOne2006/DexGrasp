@@ -11,13 +11,14 @@ import time
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Sampler
-from ..config import ModelConfig, model_config
-from ..data.dataset import GraspDataset, audit_dataset, sha256, checkpoint_identity_matches
+from ..config import model_config
+from ..data.dataset import hdf5_dataset, audit_dataset, sha256, checkpoint_identity_matches
 from ..geometry.hand import URDFHand
-from ..models.encoders import GeometryEncoder
-from ..models.keypoint import KeypointModel
-from .objectives import fm_loss, flowmap_loss, sample_keypoints, evaluation
+from ..models.checkpoint import load_model
+from ..models.registry import build_model, config_from_settings, model_branch, sample_model
+from .objectives import fm_loss, flowmap_loss, evaluation
 from .optimizers import make_optimizer
+from .schedule import apply_learning_rate
 from .execution import configure_execution
 from .checkpoints import ARCHIVE_EVERY, atomic_checkpoint
 
@@ -87,19 +88,21 @@ def plan(cfg):
     except (ValueError, OSError, KeyError, TypeError) as exc:
         blockers.append(f'hand calibration: {exc}')
     try:
-        dataset = audit_dataset(cfg['dataset_root'], cfg['model'].get('coord_scale_m', 0.2), deep=False)
+        dataset = audit_dataset(cfg['dataset_root'], cfg['model'].get('coord_scale_m', 0.2), deep=False,
+                                dataset_format=cfg.get('dataset_format', 'data_v1'), official_test_root=cfg.get('official_test_root'))
     except (ValueError, OSError, KeyError, IndexError, TypeError) as exc:
         dataset = None
         blockers.append(f'dataset: {exc}')
-    if importlib.util.find_spec('MinkowskiEngine') is None:
-        blockers.append('MinkowskiEngine is not installed in this Python environment')
-    else:
-        try:
-            import MinkowskiEngine as ME
-            if torch.device(cfg['device']).type == 'cuda' and not ME.is_cuda_available():
-                blockers.append('MinkowskiEngine was built CPU-only; this configuration requests CUDA')
-        except (ImportError, OSError, RuntimeError) as exc:
-            blockers.append(f'MinkowskiEngine extension cannot load: {exc}')
+    if model_branch(cfg['model'].get('family', 'keypoint_flow')).requires_minkowski:
+        if importlib.util.find_spec('MinkowskiEngine') is None:
+            blockers.append('MinkowskiEngine is not installed in this Python environment')
+        else:
+            try:
+                import MinkowskiEngine as ME
+                if torch.device(cfg['device']).type == 'cuda' and not ME.is_cuda_available():
+                    blockers.append('MinkowskiEngine was built CPU-only; this configuration requests CUDA')
+            except (ImportError, OSError, RuntimeError) as exc:
+                blockers.append(f'MinkowskiEngine extension cannot load: {exc}')
     if torch.device(cfg['device']).type == 'cuda' and not torch.cuda.is_available():
         blockers.append('CUDA unavailable in this Python environment')
     if cfg['method'] == 'flowmap' and not Path(cfg['teacher_checkpoint']).is_file():
@@ -110,18 +113,6 @@ def plan(cfg):
                 config=cfg, model=resolved, dataset=dataset,
                 effective_batch_size=cfg['batch_size']*cfg['accumulation'],
                 evaluation_protocol='FM velocity MSE / FlowMap paired endpoint MSE are diagnostics; physical success is separate')
-
-
-def load_model(checkpoint, device, *, encoder_factory=GeometryEncoder):
-    state = torch.load(checkpoint, map_location='cpu', weights_only=False)
-    if state.get('schema') != 'dexgrasp-v1' or state['method'] not in ('fm', 'flowmap'):
-        raise ValueError('checkpoint is not a DexGrasp v1 model')
-    model = KeypointModel(ModelConfig(**state['model_config']), state['method'], encoder_factory=encoder_factory).to(device)
-    model.load_state_dict(state['model'])
-    from .execution import configure_attention_precision
-    configure_attention_precision(model)
-    model.eval()
-    return model, state
 
 
 def load_teacher(cfg, data_identity, hand_hash, device, encoder_factory):
@@ -151,8 +142,8 @@ def initialize_student(student, teacher):
 
 def initialize_checkpoint(model, path, identity, hand_hash):
     state = torch.load(path, map_location='cpu', weights_only=False)
-    if (state.get('schema') != 'dexgrasp-v1' or state.get('method') != model.method
-            or state.get('step', 0) < 1 or ModelConfig(**state['model_config']) != model.cfg):
+    if (state.get('schema') != model.cfg.checkpoint_schema or state.get('method') != model.method
+            or state.get('step', 0) < 1 or config_from_settings(state['model_config']) != model.cfg):
         raise ValueError('initial checkpoint method/variant/dimensions mismatch or no training steps')
     if not checkpoint_identity_matches(state['data_identity'], identity, state['config']['dataset_root']) or state['hand_spec_sha256'] != hand_hash:
         raise ValueError('initial checkpoint must use the same dataset and hand calibration')
@@ -164,9 +155,8 @@ def train_mode(model, cfg):
     model.train()
     if cfg.get('freeze_encoders', False):
         # Freezing parameters also freezes BatchNorm running statistics.
-        model.object_encoder.eval()
-        if model.scene_encoder is not None:
-            model.scene_encoder.eval()
+        for encoder in model.feature_encoders():
+            encoder.eval()
 
 
 @torch.no_grad()
@@ -179,12 +169,12 @@ def reconstruction_metrics(model, loader, cfg, device, *, seed=20000):
         for batch in loader:
             batch = move_batch(batch, device)
             with autocast(cfg, device):
-                predicted = sample_keypoints(model, batch['condition'], steps=cfg['sample_steps'])
+                predicted = sample_model(model, batch['condition'], steps=cfg['sample_steps'])
             distance = (predicted-batch['keypoints_gt']).norm(dim=-1)*model.cfg.coord_scale_m*1000
             distances.append(distance.cpu())
     values = torch.cat(distances)
     return dict(mpjpe_mm=float(values.mean()), p95_keypoint_mm=float(torch.quantile(values.flatten(), .95)),
-                max_sample_mpjpe_mm=float(values.mean(-1).max()))
+                max_sample_mpjpe_mm=float(values.flatten(1).mean(-1).max()))
 
 
 @torch.no_grad()
@@ -202,7 +192,7 @@ def validate(model, loader, cfg, device):
                     loss = fm_loss(model, batch)
                 else:
                     # No held-out teacher trajectories are used as distillation supervision.
-                    generated = sample_keypoints(model, batch['condition'], steps=cfg['sample_steps'])
+                    generated = sample_model(model, batch['condition'], steps=cfg['sample_steps'])
                     loss = (generated-batch['keypoints_gt']).square().mean()
             n = len(batch['keypoints_gt'])
             total += float(loss)*n
@@ -212,13 +202,15 @@ def validate(model, loader, cfg, device):
     return total/count
 
 
-def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
+def run(cfg, *, resume=None, stop_after=None, encoder_factory=None):
     hand = URDFHand(cfg['hand_spec'])
     hand_hash = sha256(cfg['hand_spec'])
     if hand_hash != sha256(Path(cfg['dataset_root'])/'hand/hand_spec.json'):
         raise ValueError('configured and dataset hand spec differ')
     mc = model_config(cfg, hand.spec)
-    identity = audit_dataset(cfg['dataset_root'], mc.coord_scale_m, deep=True)
+    dataset_format = cfg.get('dataset_format', 'data_v1')
+    identity = audit_dataset(cfg['dataset_root'], mc.coord_scale_m, deep=True, dataset_format=dataset_format,
+                             official_test_root=cfg.get('official_test_root'))
     identity['hand_urdf_sha256'] = sha256(hand.urdf_path)
     source = source_state()
     runtime = runtime_identity()
@@ -235,7 +227,7 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
     random.seed(cfg['seed'])
     np.random.seed(cfg['seed'])
     torch.manual_seed(cfg['seed'])
-    model = KeypointModel(mc, cfg['method'], encoder_factory=encoder_factory).to(device)
+    model = build_model(mc, cfg['method'], encoder_factory=encoder_factory).to(device)
     initial_hash = None
     if cfg.get('initialization') == 'checkpoint':
         initial_hash = initialize_checkpoint(model, cfg['initial_checkpoint'], identity, hand_hash)
@@ -249,16 +241,17 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
         if cfg.get('initialization', 'random') == 'fm_teacher':
             initialize_student(model, teacher)
     if cfg.get('freeze_encoders', False):
-        model.object_encoder.requires_grad_(False)
-        if model.scene_encoder is not None:
-            model.scene_encoder.requires_grad_(False)
+        if not hasattr(model, 'feature_encoders'):
+            raise ValueError(f'{mc.family} does not expose encoders to freeze')
+        for encoder in model.feature_encoders():
+            encoder.requires_grad_(False)
     configure_execution(model, cfg)
     trainable = [p for p in model.parameters() if p.requires_grad]
     optimizer = make_optimizer(model, cfg, fused=device.type == "cuda")
     start, best = 0, float('inf')
     if resume:
         state = torch.load(resume, map_location='cpu', weights_only=False)
-        if state.get('schema') != 'dexgrasp-v1' or state['config'] != cfg or state['data_identity'] != identity:
+        if state.get('schema') != mc.checkpoint_schema or state['config'] != cfg or state['data_identity'] != identity:
             raise ValueError('resume requires identical config/data identity')
         if state['source']['source_sha256'] != source['source_sha256'] or state['teacher_sha256'] != teacher_hash:
             raise ValueError('source or teacher changed; start a separate run')
@@ -276,7 +269,7 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
         raise ValueError('checkpoint already reached max_steps')
     if stop_after is not None and not start < stop_after <= cfg['max_steps']:
         raise ValueError('stop_after must be after the resumed step and at most max_steps')
-    datasets = {s: GraspDataset(cfg['dataset_root'], s, mc.coord_scale_m,
+    datasets = {s: hdf5_dataset(dataset_format)(cfg['dataset_root'], s, mc.coord_scale_m,
                                observation_cache_size=cfg['observation_cache_size'],
                                max_open_shards=cfg['max_open_shards'],
                                condition_keys=mc.condition_keys) for s in ('train',)}
@@ -321,6 +314,8 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
                 log.flush()
             for step in range(start+1, cfg['max_steps']+1):
                 train_mode(model, cfg)
+                if cfg['lr_schedule'] != 'constant':
+                    apply_learning_rate(optimizer, cfg, step-1)
                 optimizer.zero_grad(set_to_none=True)
                 total = 0.
                 for _ in range(cfg['accumulation']):
@@ -351,7 +346,7 @@ def run(cfg, *, resume=None, stop_after=None, encoder_factory=GeometryEncoder):
                 log.write(json.dumps(record, allow_nan=False)+'\n')
                 log.flush()
                 if improved or step % cfg['save_every'] == 0 or step % ARCHIVE_EVERY == 0 or step == cfg['max_steps'] or step == stop_after:
-                    state = dict(schema='dexgrasp-v1', method=cfg['method'], step=step, config=cfg,
+                    state = dict(schema=mc.checkpoint_schema, method=cfg['method'], step=step, config=cfg,
                                  model_config=asdict(mc), model=model.state_dict(), optimizer=optimizer.state_dict(),
                                  source=source, data_identity=identity, hand_spec_sha256=hand_hash,
                                  teacher_sha256=teacher_hash, best_val=best, validation_metric=val_name,

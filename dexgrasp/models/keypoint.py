@@ -1,11 +1,11 @@
-"""Shared v1 conditional Transformer; independent FM and FlowMap parameters."""
+"""Conditional Transformer for single poses and joint three-stage generation."""
 from dataclasses import dataclass
 import math
 import torch
 from torch import nn
 from torch.nn import functional as F
 from torch.utils.checkpoint import checkpoint
-from .encoders import GeometryEncoder
+from .encoders import GeometryEncoder, farthest_point_indices
 
 
 def time_embedding(t, width=128):
@@ -73,22 +73,26 @@ class Attention(nn.Module):
 
 
 class ConditionalBlock(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg, layer_index=0):
         super().__init__()
         w = cfg.width
         branches = 2 if cfg.use_scene else 1
+        self.conditions = cfg.block_conditions[layer_index]
         self.norms = nn.ModuleList(nn.LayerNorm(w) for _ in range(branches+2))
-        self.modulations = nn.ModuleList(nn.Sequential(nn.SiLU(), nn.Linear(w, 3*w)) for _ in range(branches+2))
+        self.modulations = nn.ModuleList(nn.Sequential(nn.SiLU(), nn.Linear(w, 3*w))
+                                         for _ in range(branches+2)) if self.conditions.adaln else None
         self.self_attention = Attention(w, cfg.heads, cfg.self_attention_backend)
         self.cross = nn.ModuleList(Attention(w, cfg.heads) for _ in range(branches))
         self.context_norms = nn.ModuleList(nn.LayerNorm(w) for _ in range(branches))
         self.biases = nn.ModuleList(nn.Sequential(nn.Linear(2, 64), nn.SiLU(),
                                                  nn.Linear(64, cfg.heads))
-                                   for _ in range(0 if cfg.direction_adaln else branches))
+                                   for _ in range(branches if self.conditions.geometry_bias else 0))
         self.ffn = nn.Sequential(nn.Linear(w, 4*w), nn.GELU(), nn.Linear(4*w, w))
         self.checkpoint_direction_bias = False
 
     def modulate(self, x, condition, i):
+        if self.modulations is None:
+            return self.norms[i](x), 1.0
         gamma, beta, gate = self.modulations[i](condition).chunk(3, -1)
         u = (1 + gamma[:, None]) * self.norms[i](x) + beta[:, None]
         return u, gate[:, None]
@@ -97,7 +101,14 @@ class ConditionalBlock(nn.Module):
         return tuple(attn.project_kv(norm(g)) for attn, norm, g in
                      zip(self.cross, self.context_norms, tokens))
 
-    def forward(self, x, condition, tokens, geometry, kv=None):
+    def forward(self, x, condition, tokens, geometry, kv=None, gap_embedding=None, direction_embedding=None):
+        if self.conditions.depth and gap_embedding is not None:
+            condition = gap_embedding + condition
+        if self.conditions.direction_adaln and direction_embedding is not None:
+            condition = condition + direction_embedding
+        if self.modulations is None:
+            # Plain pre-LN ablation: keep FM time and any selected depth as additive inputs.
+            x = x + condition[:, None]
         u, gate = self.modulate(x, condition, 0)
         x = x + gate * self.self_attention(u, u)
         for i in range(len(self.cross)):
@@ -119,7 +130,7 @@ class EncodedCondition:
     tokens: tuple
     centers: tuple
     gap_embedding: torch.Tensor | None
-    direction: torch.Tensor
+    direction: torch.Tensor | None
     kv: tuple | None = None
     direction_embedding: torch.Tensor | None = None
 
@@ -139,8 +150,20 @@ class KeypointModel(nn.Module):
                                   nn.SiLU(), nn.Linear(cfg.width, cfg.width))
         self.embed = nn.Sequential(nn.Linear(3, 128), nn.SiLU(), nn.Linear(128, cfg.width))
         self.ids = nn.Embedding(cfg.keypoints, cfg.width)
-        self.blocks = nn.ModuleList(ConditionalBlock(cfg) for _ in range(cfg.depth))
-        self.head = nn.Sequential(nn.LayerNorm(cfg.width), nn.Linear(cfg.width, 3))
+        self.stage_ids = nn.Embedding(cfg.stages, cfg.width) if cfg.stages == 3 else None
+        self.blocks = nn.ModuleList(ConditionalBlock(cfg, i) for i in range(cfg.depth))
+        heads = [nn.Sequential(nn.LayerNorm(cfg.width), nn.Linear(cfg.width, 3)) for _ in range(cfg.stages)]
+        self.head = heads[0] if cfg.stages == 1 else nn.ModuleList(heads)
+
+    def feature_encoders(self):
+        return (self.object_encoder, self.scene_encoder) if self.cfg.use_scene else (self.object_encoder,)
+
+    @torch.no_grad()
+    def cache_condition_indices(self, condition):
+        for prefix in (('object', 'scene') if self.cfg.use_scene else ('object',)):
+            points = condition[prefix + '_points']
+            condition[prefix + '_fps_indices'] = torch.cat([
+                farthest_point_indices(chunk, self.cfg.tokens) for chunk in points.split(128)])
 
     def encode(self, condition, *, cache_kv=False):
         if cache_kv and (self.training or torch.is_grad_enabled()):
@@ -148,10 +171,10 @@ class KeypointModel(nn.Module):
         missing = set(self.cfg.condition_keys) - condition.keys()
         if missing:
             raise ValueError(f'missing model conditions: {sorted(missing)}')
-        obj, direction = condition['object_points'], condition['grasp_direction_cmd']
+        obj = condition['object_points']
         b = len(obj)
-        if obj.shape != (b, 1024, 3) or direction.shape != (b, 3):
-            raise ValueError('invalid object/direction dimensions')
+        if obj.shape != (b, 1024, 3):
+            raise ValueError('invalid object dimensions')
         if not all(torch.isfinite(condition[k]).all() for k in self.cfg.condition_keys):
             raise ValueError('conditions must be finite')
         if self.cfg.use_scene:
@@ -161,13 +184,18 @@ class KeypointModel(nn.Module):
             if not ((mask == 0) | (mask == 1)).all() or not (mask.sum(-1) == 512).all():
                 raise ValueError('scene_mask must contain exactly 512 target points')
         if self.cfg.use_gap:
-            gap = condition['palm_gap']
+            gap = condition[self.cfg.depth_key]
             if gap.shape != (b, 1) or (gap < 0).any():
-                raise ValueError('palm_gap must be nonnegative with shape [B,1]')
-        norm = torch.linalg.vector_norm(direction, dim=-1, keepdim=True)
-        if (norm <= 1e-8).any():
-            raise ValueError('grasp direction must be nonzero')
-        direction = direction / norm
+                raise ValueError(f'{self.cfg.depth_key} must be nonnegative with shape [B,1]')
+        direction = None
+        if self.cfg.geometry_bias or self.cfg.direction_adaln:
+            direction = condition['grasp_direction_cmd']
+            if direction.shape != (b, 3):
+                raise ValueError('grasp direction must have shape [B,3]')
+            norm = torch.linalg.vector_norm(direction, dim=-1, keepdim=True)
+            if (norm <= 1e-8).any():
+                raise ValueError('grasp direction must be nonzero')
+            direction = direction / norm
         object_options = {'indices': condition['object_fps_indices']} if 'object_fps_indices' in condition else {}
         go, co = self.object_encoder(obj, torch.ones_like(obj[..., 0]), **object_options)
         tokens, centers = (go,), (co,)
@@ -181,7 +209,7 @@ class KeypointModel(nn.Module):
         return EncodedCondition(tokens, centers, gap_embedding, direction, kv, direction_embedding)
 
     def forward(self, state, time_start, condition, time_end=None):
-        if state.shape != (len(state), self.cfg.keypoints, 3) or time_start.shape != (len(state),):
+        if state.shape != (len(state), *self.cfg.state_shape) or time_start.shape != (len(state),):
             raise ValueError('invalid keypoint state or time shape')
         if self.method == 'fm' and time_end is not None:
             raise ValueError('FM takes one time; FlowMap takes a time pair')
@@ -195,18 +223,24 @@ class KeypointModel(nn.Module):
         if self.method == 'flowmap':
             times = torch.cat((times, time_embedding(time_end)), -1)
         global_condition = self.time(times)
-        if condition.gap_embedding is not None:
-            global_condition = condition.gap_embedding + global_condition
-        if condition.direction_embedding is not None:
-            global_condition = global_condition + condition.direction_embedding
         x = self.embed(state) + self.ids.weight[None]
-        geometry = (() if self.cfg.direction_adaln else
-                    tuple(direction_geometry(state, c, condition.direction) for c in condition.centers))
+        positions = state
+        if self.stage_ids is not None:
+            x = (x + self.stage_ids.weight[:, None, :]).flatten(1, 2)
+            positions = state.flatten(1, 2)
+        geometry = (tuple(direction_geometry(positions, c, condition.direction) for c in condition.centers)
+                    if self.cfg.geometry_bias else ())
         for i, block in enumerate(self.blocks):
             x = block(x, global_condition, condition.tokens, geometry,
-                      None if condition.kv is None else condition.kv[i])
-        value = self.head(x)
+                      None if condition.kv is None else condition.kv[i],
+                      condition.gap_embedding, condition.direction_embedding)
+        if self.stage_ids is None:
+            value = self.head(x)
+        else:
+            stages = x.split(self.cfg.keypoints, dim=1)
+            value = torch.stack([head(tokens) for head, tokens in zip(self.head, stages)], dim=1)
         if self.method == 'flowmap':
             # Accumulate coordinates in FP32 even under BF16 autocast.
-            value = state.float() + (time_end - time_start)[:, None, None] * value.float()
+            interval = (time_end - time_start).view(-1, *([1] * (state.ndim - 1)))
+            value = state.float() + interval * value.float()
         return value

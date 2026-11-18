@@ -11,12 +11,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dataset-root', required=True)
     parser.add_argument('--coord-scale-m', type=float, default=.2)
+    parser.add_argument('--dataset-format', choices=('data_v1', 'data_v2'), default='data_v1')
+    parser.add_argument('--official-test-root')
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     output = Path(args.output)
     if output.exists():
         raise FileExistsError(output)
-    receipt = create_receipt(args.dataset_root, args.coord_scale_m)
+    receipt = create_receipt(args.dataset_root, args.coord_scale_m, dataset_format=args.dataset_format,
+                             official_test_root=args.official_test_root)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open('x') as stream:
         json.dump(receipt, stream, indent=2, allow_nan=False)

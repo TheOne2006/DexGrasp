@@ -89,6 +89,8 @@ class ConditionalBlock(nn.Module):
                                    for _ in range(branches if self.conditions.geometry_bias else 0))
         self.ffn = nn.Sequential(nn.Linear(w, 4*w), nn.GELU(), nn.Linear(4*w, w))
         self.checkpoint_direction_bias = False
+        self.bias_scale = cfg.geometry_bias_scale
+        self.bias_repeats = cfg.stages if cfg.geometry_source == 'grasp' else 1
 
     def modulate(self, x, condition, i):
         if self.modulations is None:
@@ -118,7 +120,11 @@ class ConditionalBlock(nn.Module):
                 value = (checkpoint(self.biases[i], geometry[i], use_reentrant=False, preserve_rng_state=False)
                          if self.checkpoint_direction_bias and self.training and torch.is_grad_enabled()
                          else self.biases[i](geometry[i]))
+                if self.bias_scale != 1.0:
+                    value = value * self.bias_scale
                 bias = value.permute(0, 3, 1, 2)
+                if self.bias_repeats > 1:
+                    bias = bias.repeat(1, 1, self.bias_repeats, 1)
             memory = self.context_norms[i](tokens[i]) if kv is None else None
             x = x + gate * self.cross[i](u, memory, bias, None if kv is None else kv[i])
         u, gate = self.modulate(x, condition, len(self.cross)+1)
@@ -227,7 +233,7 @@ class KeypointModel(nn.Module):
         positions = state
         if self.stage_ids is not None:
             x = (x + self.stage_ids.weight[:, None, :]).flatten(1, 2)
-            positions = state.flatten(1, 2)
+            positions = state[:, 1] if self.cfg.geometry_source == 'grasp' else state.flatten(1, 2)
         geometry = (tuple(direction_geometry(positions, c, condition.direction) for c in condition.centers)
                     if self.cfg.geometry_bias else ())
         for i, block in enumerate(self.blocks):

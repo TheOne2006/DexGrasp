@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import json
 import math
+import torch
 from pathlib import Path
 
 
@@ -52,6 +53,24 @@ class ModelConfig:
     stages: int = 1
     conditioning: BlockConditions | tuple[BlockConditions, ...] | None = None
     family: str = 'keypoint_flow'
+    target: str = 'absolute'  # 'grasp' selects the middle frame of DataV2.
+    geometry_source: str = 'per_stage'
+    geometry_bias_scale: float = 1.0
+
+    def absolute_target(self, poses):
+        return poses[:, 1] if self.target == 'grasp' else poses
+
+    def training_state(self, poses):
+        if self.target == 'residual':
+            pre, grasp, squeeze = poses.unbind(dim=1)
+            return torch.stack((pre - grasp, grasp, squeeze - grasp), dim=1)
+        return self.absolute_target(poses)
+
+    def absolute_state(self, state):
+        if self.target == 'residual':
+            pre, grasp, squeeze = state.unbind(dim=1)
+            return torch.stack((pre + grasp, grasp, squeeze + grasp), dim=1)
+        return state
 
     @property
     def state_shape(self):
@@ -127,6 +146,14 @@ class ModelConfig:
             object.__setattr__(self, 'variant', 'configured')
         if type(self.stages) is not int or self.stages not in (1, 3):
             raise ValueError('stages must be 1 or 3')
+        if self.target not in ('grasp', 'absolute', 'residual'):
+            raise ValueError('unknown training target')
+        if self.target == 'grasp' and (self.stages != 1 or self.use_scene or self.use_gap):
+            raise ValueError('DataV2 grasp-only baseline requires one stage, object only and no depth')
+        if self.target == 'residual' and (self.stages != 3 or self.geometry_source != 'grasp'):
+            raise ValueError('residual targets require three stages and grasp geometry')
+        if self.geometry_source not in ('grasp', 'per_stage') or not math.isfinite(self.geometry_bias_scale):
+            raise ValueError('invalid geometry bias configuration')
         if self.stages == 3 and self.use_scene:
             raise ValueError('three-stage generation requires an object-only encoder')
         for key in ('width', 'depth', 'heads', 'tokens', 'backbone_channels', 'keypoints'):
@@ -154,7 +181,7 @@ class ModelConfig:
             raise ValueError('choose either explicit conditioning or a legacy variant')
         if settings.get('conditioning') is None and variant is not None and variant not in MODEL_VARIANTS:
             raise ValueError('unknown model variant')
-        if (dataset_format == 'data_v2') != (settings.get('stages', 1) == 3):
+        if (dataset_format == 'data_v2') != (settings.get('stages', 1) == 3 or settings.get('target') == 'grasp'):
             raise ValueError('three-stage keypoint models require paired data_v2 shards and vice versa')
 
 

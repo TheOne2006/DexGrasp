@@ -44,4 +44,4 @@ def sample_keypoints(model, condition, *, steps, noise=None, cache_kv=True, cand
                 state = model(state, a, context, b).float()
         if not torch.isfinite(state).all():
             raise FloatingPointError('nonfinite generated keypoints')
-        return state
+        return model.cfg.absolute_state(state)

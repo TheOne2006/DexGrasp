@@ -18,7 +18,10 @@ def fm_pair(clean, *, noise=None, time=None):
 def fm_loss(model, batch):
     if model.method != 'fm':
         raise ValueError('fm_loss requires an FM model')
-    state, time, target = fm_pair(batch['keypoints_gt'])
+    clean = batch['keypoints_gt']
+    if hasattr(model.cfg, 'training_state'):
+        clean = model.cfg.training_state(clean)
+    state, time, target = fm_pair(clean)
     prediction = model(state, time, model.encode(batch['condition']))
     return (prediction.float()-target.float()).square().mean()
 
@@ -69,7 +72,7 @@ def flowmap_loss(student, teacher, batch, *, steps=32, solver='heun', full_inter
     if student.method != 'flowmap' or teacher.method != 'fm' or any(p.requires_grad for p in teacher.parameters()):
         raise ValueError('FlowMap requires a student and fully frozen FM teacher')
     # No dependence on the paired ground-truth endpoint: supervision is the actual teacher trajectory.
-    noise = torch.randn_like(batch['keypoints_gt'])
+    noise = torch.randn(len(batch['keypoints_gt']), *student.cfg.state_shape, device=batch['keypoints_gt'].device)
     trajectory = ode_trajectory(teacher, batch['condition'], noise, steps=steps, solver=solver)
     state_a, state_b, a, b = interval_pairs(trajectory, full_interval_probability)
     predicted = student(state_a, a, student.encode(batch['condition']), b)

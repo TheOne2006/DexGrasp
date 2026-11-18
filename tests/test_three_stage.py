@@ -67,6 +67,37 @@ def paired_shard(root):
 
 
 class ThreeStageModelTests(unittest.TestCase):
+    def test_november_pair_recipes_and_shared_grasp_bias(self):
+        root = Path(__file__).resolve().parents[1] / 'configs/paired_1125'
+        self.assertEqual({p.stem for p in root.glob('*.json')}, {g+n for g in 'ABCD' for n in '12'})
+        absolute = torch.randn(2, 3, 21, 3)
+        for path in sorted(root.glob('*.json')):
+            cfg = ModelConfig.from_file(path, hand_reference_length_m=.204)
+            cfg = replace(cfg, width=32, depth=1, heads=4, tokens=8, backbone_channels=16)
+            model = KeypointModel(cfg, encoder_factory=FixtureEncoder)
+            name = path.stem
+            self.assertEqual(cfg.target, 'grasp' if name == 'A1' else 'residual' if name[1] == '2' else 'absolute')
+            self.assertEqual((cfg.direction_adaln, cfg.geometry_bias, cfg.use_gap),
+                             (name[0] != 'A', name[0] != 'B', name[0] == 'D'))
+            state = cfg.training_state(absolute)
+            torch.testing.assert_close(cfg.absolute_state(state), absolute[:, 1] if name == 'A1' else absolute)
+            if name[1] == '2':
+                torch.testing.assert_close(state[:, 0], absolute[:, 0] - absolute[:, 1])
+            raw = dict(condition(), h32=torch.full((2, 1), .02))
+            batch = dict(condition=raw, keypoints_gt=absolute)
+            FMLossModule(model)(batch).backward()
+            self.assertTrue(all(p.grad is not None for p in model.parameters()))
+            if cfg.geometry_bias:
+                context = model.encode(raw)
+                attention = model.blocks[0].cross[0]
+                with patch.object(attention, 'forward', wraps=attention.forward) as call:
+                    model(state, torch.tensor([.2,.6]), context)
+                    bias = call.call_args.args[2]
+                if cfg.stages == 3:
+                    pre, grasp, squeeze = bias.chunk(3, 2)
+                    torch.testing.assert_close(pre, grasp)
+                    torch.testing.assert_close(squeeze, grasp)
+
     def test_shared_time_joint_attention_and_three_heads(self):
         state = torch.randn(2, 3, 21, 3)
         noise = torch.randn_like(state)

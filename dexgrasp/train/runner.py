@@ -170,7 +170,10 @@ def reconstruction_metrics(model, loader, cfg, device, *, seed=20000):
             batch = move_batch(batch, device)
             with autocast(cfg, device):
                 predicted = sample_model(model, batch['condition'], steps=cfg['sample_steps'])
-            distance = (predicted-batch['keypoints_gt']).norm(dim=-1)*model.cfg.coord_scale_m*1000
+            target = batch['keypoints_gt']
+            if hasattr(model.cfg, 'absolute_target'):
+                target = model.cfg.absolute_target(target)
+            distance = (predicted-target).norm(dim=-1)*model.cfg.coord_scale_m*1000
             distances.append(distance.cpu())
     values = torch.cat(distances)
     return dict(mpjpe_mm=float(values.mean()), p95_keypoint_mm=float(torch.quantile(values.flatten(), .95)),
@@ -193,7 +196,10 @@ def validate(model, loader, cfg, device):
                 else:
                     # No held-out teacher trajectories are used as distillation supervision.
                     generated = sample_model(model, batch['condition'], steps=cfg['sample_steps'])
-                    loss = (generated-batch['keypoints_gt']).square().mean()
+                    target = batch['keypoints_gt']
+                    if hasattr(model.cfg, 'absolute_target'):
+                        target = model.cfg.absolute_target(target)
+                    loss = (generated-target).square().mean()
             n = len(batch['keypoints_gt'])
             total += float(loss)*n
             count += n

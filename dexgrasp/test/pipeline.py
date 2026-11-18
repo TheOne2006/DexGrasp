@@ -47,7 +47,8 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
     model, state = load_model(checkpoint, device, encoder_factory=encoder_factory)
     data_version = state['data_identity'].get('schema_version', 1)
     dataset_format = 'data_v2' if data_version == 2 else 'data_v1'
-    three_stage = dataset_format == 'data_v2'
+    paired = dataset_format == 'data_v2'
+    three_stage = paired and getattr(model.cfg, 'target', 'absolute') != 'grasp'
     variant = getattr(model.cfg, 'variant', model.cfg.family)
     identity = audit_dataset(dataset_root, model.cfg.coord_scale_m, deep=True, dataset_format=dataset_format,
                              official_test_root=state.get('config', {}).get('official_test_root'))
@@ -75,7 +76,7 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
     try:
         with new_output(output) as temporary, h5py.File(temporary, 'w') as f:
             count = len(dataset)
-            f.attrs.update(schema='dexgrasp-samples-v2' if three_stage else 'dexgrasp-samples-v1', method=model.method, split=split,
+            f.attrs.update(schema='dexgrasp-samples-v2' if paired else 'dexgrasp-samples-v1', method=model.method, split=split,
                            model_family=model.cfg.family,
                            model_variant=variant, palm_gap_conditioned=use_depth,
                            direction_conditioned='grasp_direction_cmd' in model.cfg.condition_keys,
@@ -85,13 +86,15 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
                            physical_success_evaluated=False)
             f.attrs['condition_override'] = json.dumps(dict(palm_gap_m=palm_gap_m,
                                         direction=None if direction is None else direction.tolist()))
-            depth_field = 'h32_cmd' if three_stage else 'h'
-            if three_stage:
-                f.attrs['stage_order'] = json.dumps(STAGE_ORDER)
+            depth_field = 'h32_cmd' if paired else 'h'
+            if paired:
+                order = STAGE_ORDER if three_stage else ('grasp',)
+                f.attrs['stage_order'] = json.dumps(order)
+                f.attrs['target'] = getattr(model.cfg, 'target', 'absolute')
                 if hasattr(model.cfg, 'block_conditions'):
                     f.attrs['conditioning'] = json.dumps([asdict(block) for block in model.cfg.block_conditions])
                 f.create_dataset('h32_gt', shape=(count, 1), dtype=np.float32)
-            if use_depth or not three_stage:
+            if use_depth or not paired:
                 f.create_dataset(depth_field, shape=(count, 1), dtype=np.float32, chunks=True)
             pose_shape = (len(STAGE_ORDER), 21, 3) if three_stage else (21, 3)
             for key, shape in [('K', (count, candidates, *pose_shape)), ('d', (count, 3))]:
@@ -100,7 +103,7 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
                 f.create_dataset(key, shape=(count,), dtype=h5py.string_dtype('utf-8'))
             cursor = 0
             for raw in loader:
-                if palm_gap_m is not None and (use_depth or not three_stage):
+                if palm_gap_m is not None and (use_depth or not paired):
                     raw['condition'][depth_key] = torch.full_like(raw['condition'][depth_key], palm_gap_m)
                 if direction is not None:
                     raw['condition']['grasp_direction_cmd'] = torch.from_numpy(direction).expand(len(raw['keypoints_gt']), -1)
@@ -121,7 +124,7 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
                 f['d'][cursor:cursor+n] = raw['condition']['grasp_direction_cmd'].numpy()
                 if depth_field in f:
                     f[depth_field][cursor:cursor+n] = raw['condition'][depth_key].numpy()
-                if three_stage:
+                if paired:
                     f['h32_gt'][cursor:cursor+n] = raw['h32'].numpy()
                 for key in ('scene_id', 'view_id', 'object_id', 'grasp_id'):
                     f[key][cursor:cursor+n] = raw['metadata'][key]
@@ -135,16 +138,16 @@ def generate(checkpoint, dataset_root, output, *, split='test', steps=None, cand
                 note='Timing excludes SVD/IK, collision checks and physics; physical success is unmeasured.')
 
 
-def decode_stages(keypoints, hand, direction, depth_mesh, requested_depth, *, tolerance_m, max_nfev):
+def decode_stages(keypoints, hand, direction, depth_mesh, requested_depth, *, tolerance_m, max_nfev, order=STAGE_ORDER):
     stages = {}
-    for name, points in zip(STAGE_ORDER, keypoints, strict=True):
+    for name, points in zip(order, keypoints, strict=True):
         try:
             decoded = decode_keypoints(points, hand, direction, tolerance_m=tolerance_m, max_nfev=max_nfev)
             stages[name] = {k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in decoded.items()}
         except (ValueError, FloatingPointError, np.linalg.LinAlgError) as exc:
             stages[name] = dict(ik_success=False, joint_limits_valid=False, error=str(exc))
     grasp = stages['grasp']
-    raw_angle = raw_anchor_direction_error(keypoints[STAGE_ORDER.index('grasp')], hand, direction)
+    raw_angle = raw_anchor_direction_error(keypoints[order.index('grasp')], hand, direction)
     result = dict(stages=stages, ik_success=all(s['ik_success'] for s in stages.values()),
                   joint_limits_valid=all(s['joint_limits_valid'] for s in stages.values()),
                   direction_error_deg=grasp.get('direction_error_deg'), raw_direction_error_deg=raw_angle,
@@ -154,6 +157,9 @@ def decode_stages(keypoints, hand, direction, depth_mesh, requested_depth, *, to
         depth = float(depth_mesh.measure(official, grasp['t']))
         if np.isfinite(depth):
             result.update(palm_gap_valid=True, measured_h32_m=depth, palm_gap_error_m=abs(depth-requested_depth))
+    if order == ('grasp',):
+        result.pop('stages')
+        result.update(grasp)
     return result
 
 
@@ -162,17 +168,23 @@ def decode_file(samples, output, *, tolerance_m=0.003, max_nfev=100):
     if output.exists():
         raise FileExistsError(output)
     with h5py.File(samples, 'r') as f:
-        three_stage = f.attrs.get('schema') == 'dexgrasp-samples-v2'
-        if three_stage:
-            check_stage_order(f.attrs.get('stage_order'))
+        paired = f.attrs.get('schema') == 'dexgrasp-samples-v2'
+        if paired:
+            single = f.attrs.get('target') == 'grasp'
+            order = ('grasp',) if single else STAGE_ORDER
+            if single:
+                if json.loads(f.attrs['stage_order']) != ['grasp']:
+                    raise ValueError('invalid grasp-only stage order')
+            else:
+                check_stage_order(f.attrs.get('stage_order'))
             conditioning = json.loads(f.attrs['conditioning']) if 'conditioning' in f.attrs else None
-            if f['K'].ndim != 5 or f['K'].shape[2:] != (3, 21, 3):
+            if f['K'].shape[2:] != ((21, 3) if single else (3, 21, 3)):
                 raise ValueError('invalid three-stage sample dimensions')
         elif f.attrs.get('schema') != 'dexgrasp-samples-v1':
             raise ValueError('invalid sample file')
         root = Path(f.attrs['dataset_root'])
         hand = URDFHand(root/'hand/hand_spec.json')
-        if three_stage:
+        if paired:
             hand.spec['direction_condition'] = official_wrist_definition(hand.spec)
         if sha256(hand.spec_path) != f.attrs['hand_spec_sha256'] or sha256(hand.urdf_path) != f.attrs['hand_urdf_sha256']:
             raise ValueError('hand calibration changed since sampling')
@@ -187,7 +199,7 @@ def decode_file(samples, output, *, tolerance_m=0.003, max_nfev=100):
                 key = (text(f['scene_id'][i]), text(f['view_id'][i]))
                 if key != cached_key:
                     scene = scenes.get(key) or scenes[(key[0], None)]
-                    if three_stage:
+                    if paired:
                         target = PalmSurfaceDepth(*scene_meshes(root, scene, target_only=True), scale=1.)
                     else:
                         target, _ = scene_meshes(root, scene)
@@ -200,14 +212,14 @@ def decode_file(samples, output, *, tolerance_m=0.003, max_nfev=100):
                                direction_conditioned=bool(f.attrs.get('direction_conditioned', True)),
                                grasp_id=text(f['grasp_id'][i]),
                                physical_success=None, collision_free=None)
-                    if three_stage:
+                    if paired:
                         label = float(f['h32_gt'][i, 0])
                         command = float(f['h32_cmd'][i, 0]) if row['palm_gap_conditioned'] else None
                         row.update(h32_gt_m=label, requested_h32_m=command, direction_projected=False)
                         if conditioning is not None:
                             row['conditioning'] = conditioning
-                        row.update(decode_stages(keypoints, hand, f['d'][i], target, label if command is None else command,
-                                                 tolerance_m=tolerance_m, max_nfev=max_nfev))
+                        row.update(decode_stages(keypoints[None] if single else keypoints, hand, f['d'][i], target, label if command is None else command,
+                                                 tolerance_m=tolerance_m, max_nfev=max_nfev, order=order))
                     else:
                         row['requested_palm_gap_m'] = float(f['h'][i, 0])
                         try:

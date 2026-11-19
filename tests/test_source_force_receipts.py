@@ -1,6 +1,7 @@
 import copy
 import unittest
 
+from dexgrasp.test.force_summary import solved_force_metrics
 from scripts.audit_source_force import physics_verified
 
 
@@ -8,6 +9,16 @@ AXES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 
 
 class SourceReceiptTests(unittest.TestCase):
+    def test_conditional_osr_counts_only_eligible_wins_in_the_original_budget(self):
+        # Object 1 wins only with fallback, object 2 has no solved controls.
+        metrics = solved_force_metrics([True, True, True, False, False],
+                                      [True, False, False, True, True], [0, 0, 1, 1, 2])
+        self.assertEqual((metrics["passed"], metrics["solved"], metrics["attempted"]), (1, 3, 5))
+        self.assertEqual((metrics["passed_units"], metrics["eligible_units"], metrics["units"]), (1, 2, 3))
+        empty = solved_force_metrics([False], [True], [1])
+        self.assertIsNone(empty["gsr"])
+        self.assertIsNone(empty["osr"])
+
     def test_floating_rechecks_all_six_axes_and_strict_thresholds(self):
         record = dict(
             type="force_closure_6d",

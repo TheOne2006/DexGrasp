@@ -17,6 +17,11 @@ class FrozenResidualConfig:
     hand_reference_length_m: float = 0.0
     grasp_steps: int = 20
     parent_depth_label: str | None = None
+    # Checkpoints written before branch dimensions were recorded used 2 x 256.
+    residual_depth: int = 2
+    residual_width: int = 256
+    residual_heads: int = 4
+    residual_self_attention_backend: str = 'auto'
     checkpoint_schema = 'dexgrasp-frozen-residual-v1'
     state_shape = (3, 21, 3)
     stages = 3
@@ -48,20 +53,20 @@ class FrozenResidualConfig:
 
 
 class ResidualFM(nn.Module):
-    def __init__(self, parent_width):
+    def __init__(self, parent_width, cfg):
         super().__init__()
-        cfg = ModelConfig(width=256, heads=4, depth=2, conditioning={})
-        self.state = nn.Linear(6, 256)
-        self.grasp = nn.Linear(parent_width, 256)
-        self.object = nn.Linear(parent_width, 256)
-        self.ids = nn.Embedding(21, 256)
-        self.time = nn.Sequential(nn.Linear(128, 256), nn.SiLU(), nn.Linear(256, 256))
-        self.blocks = nn.ModuleList(ConditionalBlock(cfg, i, ffn_ratio=2) for i in range(2))
-        self.head = nn.Sequential(nn.LayerNorm(256), nn.Linear(256, 128), nn.SiLU(), nn.Linear(128, 3))
+        width = cfg.width
+        self.state = nn.Linear(6, width)
+        self.grasp = nn.Linear(parent_width, width)
+        self.object = nn.Linear(parent_width, width)
+        self.ids = nn.Embedding(cfg.keypoints, width)
+        self.time = nn.Sequential(nn.Linear(128, width), nn.SiLU(), nn.Linear(width, width))
+        self.blocks = nn.ModuleList(ConditionalBlock(cfg, i, ffn_ratio=2) for i in range(cfg.depth))
+        self.head = nn.Sequential(nn.LayerNorm(width), nn.Linear(width, 128), nn.SiLU(), nn.Linear(128, 3))
 
     def prepare(self, hidden, tokens, cache_kv):
         memory = (self.object(tokens),)
-        kv = [block.prepare_kv(memory) for block in self.blocks] if cache_kv else [None, None]
+        kv = [block.prepare_kv(memory) if cache_kv else None for block in self.blocks]
         return self.grasp(hidden) + self.ids.weight, memory, kv
 
     def forward(self, state, time, grasp, features):
@@ -79,9 +84,12 @@ class FrozenResidualModel(nn.Module):
         if method != 'fm':
             raise ValueError('dual residual heads use FM')
         self.cfg, self.method = cfg, method
+        branch = ModelConfig(depth=cfg.residual_depth, width=cfg.residual_width,
+                             heads=cfg.residual_heads, conditioning={},
+                             self_attention_backend=cfg.residual_self_attention_backend)
         self.grasp = KeypointModel(cfg.parent, method, **options).requires_grad_(False).eval()
-        self.pregrasp = ResidualFM(cfg.parent.width)
-        self.squeeze = ResidualFM(cfg.parent.width)
+        self.pregrasp = ResidualFM(cfg.parent.width, branch)
+        self.squeeze = ResidualFM(cfg.parent.width, branch)
 
     def train(self, mode=True):
         super().train(mode)
@@ -164,6 +172,9 @@ def sample_residual(model, condition, *, steps, candidates=1, noise=None, cache_
 
 def configure_residual_execution(model, cfg):
     configure_keypoint_execution(model.grasp, cfg)
+    if model.cfg.residual_self_attention_backend == 'centered_fp32':
+        torch.set_float32_matmul_precision('highest')
+        torch.backends.cuda.matmul.allow_tf32 = False
     if cfg and cfg['compile_transformer']:
         for flow in (model.pregrasp, model.squeeze):
             for block in flow.blocks:

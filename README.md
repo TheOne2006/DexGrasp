@@ -1,8 +1,10 @@
 # DexGrasp
 
-EPIC 的 Sharpa 21 点抓姿生成与评测代码。当前四个 200k Flow Matching 模型使用 1,024 个目标物体表面点和指定方向，输出整手关键点，再经掌部 SVD 与有界手指 IK 恢复 `R,t,q[22]`。几何方向 bias / AdaLN 与 AdamW / Muon 构成四组对照。
+EPIC 的 Sharpa 21 点抓姿生成与评测代码。单帧基线的四个 200k Flow Matching 模型使用 1,024 个目标物体表面点和指定方向，输出整手关键点，再经掌部 SVD 与有界手指 IK 恢复 `R,t,q[22]`。几何方向 bias / AdaLN 与 AdamW / Muon 构成单帧对照。
 
 深度对照在 C 的配置上额外输入连续 `palm_gap`。仓库也保留原模型设计中的场景编码与 FlowMap 蒸馏入口。四模型冻结配置、物理控制及验收进度见[实验报告](../outputs/gsr_osr_200k/验收报告.md)。
+
+本批四模型六向力主表以 pregrasp 与有效 squeeze 同时求出为条件，并列出求解覆盖、条件 GSR 和原始预算下的条件 OSR。自有 Test 按物体计，公开 Test 的 OSR@10 按物体×尺度计。可在外层工作区运行 `python DexGrasp/scripts/summarize_solved_force.py outputs/gsr_osr_200k paired` 重建自有主表；公开与随机方向使用 `official`、`random`。分子、分母和排除规则见[条件指标结果](../outputs/gsr_osr_200k/conditional/)。
 
 ## DataV2 三帧生成
 
@@ -21,7 +23,7 @@ EPIC 的 Sharpa 21 点抓姿生成与评测代码。当前四个 200k Flow Match
 
 结构配置中的 `conditioning` 可以是所有 Transformer 层共用的对象，也可以是长度等于层数的数组。每层可独立设置 `direction_adaln`、`geometry_bias` 和 `depth`。关闭该层的 `adaln` 后使用普通 pre-LN 残差，时间和启用的深度以加法注入。方向 AdaLN 需要同层开启 `adaln`。
 
-第七组冻结已有单帧 FM 和物体编码器。训练时把真实 grasp 在 τ=1 送入冻结主干，取速度头之前的逐点特征。pregrasp 与 squeeze 各用自己的两层、256 维、4 头残差 FM，噪声、时间和参数独立。采样时物体只编码一次，先生成 grasp，再做一次终点前向，两路积分后的位移分别加回同一个 grasp。checkpoint 内含冻结权重及两路可训练权重。训练配置中设置 `initialization="frozen_grasp"` 和 `initial_checkpoint`，后者指向与手型标定及结构一致的单帧模型。本次软件验证使用 B_fixed 的第 200,000 步。[双路残差结构](configs/frozen_residual/B_fixed.json)
+第七组冻结已有单帧 FM 和物体编码器。训练时把真实 grasp 在 τ=1 送入冻结主干，取速度头之前的逐点特征。当前 pregrasp 与 squeeze 各用 4 层、320 维、5 头的残差 FM，噪声、时间和参数独立。每个分支有 9,160,835 个参数。两个分支合计训练 18,321,670 个参数，加上冻结的 B_fixed 共 83,298,281 个。可在相同主干上用 [2 层、256 维](configs/frozen_residual/B_fixed_2x256.json) 和 [4 层、256 维](configs/frozen_residual/B_fixed_4x256.json) 分别对照深度和宽度。采样时物体只编码一次，先生成 grasp，再做一次终点前向，两路积分后的位移分别加回同一个 grasp。checkpoint 内含冻结权重及两路可训练权重。训练配置中设置 `initialization="frozen_grasp"` 和 `initial_checkpoint`，后者指向与手型标定及结构一致的单帧模型。本次软件验证使用 B_fixed 的第 200,000 步。[双路残差结构](configs/frozen_residual/B_fixed.json)
 
 训练配置用 `model_config` 引用结构文件，路径相对该训练配置。A1–D2 的四卡 5090 模板使用每卡 840、梯度累积 1、全局 3,360，反向时重算前 2 个 Transformer block。训练步数和正式数据清单待登记。冻结双路模型复用模板时，将 `checkpoint_transformer_blocks` 设为 0，并填写冻结主干的初始化设置。全局 batch 等于每卡微批 × 卡数 × 梯度累积步数。采样返回每个候选三帧米制关键点，`decode` 逐帧运行 SVD/IK，`test` 汇总几何诊断。[5090 训练模板](configs/train/three_stage_v2.template.json)
 
@@ -86,7 +88,7 @@ A1–D2 通过同一 DataV2 HDF5 夹具循环读取两个合成训练候选，�
 
 ### RTX 5090 四卡实测（2026-11-18）
 
-每卡 256 对应全局 1,024 个抓取候选，每个候选只计一次。固定 batch 的各项均在 GPU 0–3 独占运行，预热 4 步后计时 16 个完整训练步。每步包含页锁定 CPU 张量传输、前后向、DDP 同步、梯度裁剪和优化器更新。物体输入为 1,024 个合成球面点。新模型统一 BF16 稠密层、FP32 稀疏骨干和 AdamW。V1 使用其最初的物体与场景双编码器、方向与深度条件，按同一混合精度计时。KPGrasp 使用上游提交 `89716dd` 的 28 点 Shadow Final_base、原版 FP32 网络和 Muon，每个观测配一个候选。
+每卡 256 对应全局 1,024 个抓取候选，每个候选只计一次。固定 batch 的各项均在 GPU 0–3 独占运行，预热 4 步后计时 16 个完整训练步。每步包含页锁定 CPU 张量传输、前后向、DDP 同步、梯度裁剪和优化器更新。物体输入为 1,024 个合成球面点。新模型统一 BF16 稠密层、FP32 稀疏骨干和 AdamW。本节冻结双路的吞吐、容量及生成耗时均来自当时的 2 层、256 维、4 头配置。V1 使用其最初的物体与场景双编码器、方向与深度条件，按同一混合精度计时。KPGrasp 使用上游提交 `89716dd` 的 28 点 Shadow Final_base、原版 FP32 网络和 Muon，每个观测配一个候选。
 
 | 模型 | 每卡 256 时整机候选/s | ms/步 | 最大实测每卡 batch | 四卡总 batch | 边界候选/s | 四张卡峰值显存 MiB，按 rank 顺序 |
 |---|---:|---:|---:|---:|---:|---|
@@ -400,7 +402,7 @@ LD_PRELOAD="$PWD/.venv/nccl-runtime/nvidia/nccl/lib/libnccl.so.2" \
 当前原始数据适配器可这样构建训练表（输出目录必须不存在）：
 
 ```bash
-./scripts/python.sh scripts/pack_object_corpus.py --source <raw-corpus-root> --output <new-packed-root>
+TMPDIR=../data ./scripts/python.sh scripts/pack_object_corpus.py --source <raw-corpus-root> --output ../data/<new-packed-directory>
 ```
 
 它选择一个 frozen base 及有排重证明的增量，排除重叠首批，完整校验源清单，保留真实 h32 和 +Z 方向。
@@ -545,8 +547,8 @@ weight decay=0、grad_clip=1、seed=42。每 5k 永久保留 checkpoint，结束
 
 在外层工作区，用现有项目 Python 运行冻结的 `source/scripts/schedule_experiments.py --plan <plan.json>`。
 启动前核对 supervisor 和训练进程，勿启动第二个管理器。持久锁防止重复调度器；已有活跃 worker 时拒绝重复启动。
-恢复需保持冻结代码、配置、数据、软件环境和每组四卡不变。原始归档仍在 data/archives；本机 /var/tmp 训练表不是持久备份。
-冻结划分和打包元数据备份于外层 `data/sharpa_formal_20261111/`；`local_cache/` 指向实际训练表。
+该批次运行时从节点的 `/var/tmp` 读取训练表。严格续训会检查冻结配置中记录的绝对路径、代码、数据、运行环境和每组四卡。
+现行配置通过工作区软链接读取团队盘数据。源包在 `../data/source_packages/`，正式训练表与冻结划分在 `../data/sharpa_formal_20261111/local_cache/`（从仓库根目录访问）。
 面板复用工作区 site，读取 `outputs/sharpa_formal_20261111`，展示四组排队状态、实际 LR、loss、吞吐和 GPU 分配。
 
 ## 预测物理评估与数据生成

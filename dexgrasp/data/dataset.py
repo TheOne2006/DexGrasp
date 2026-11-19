@@ -456,9 +456,16 @@ def audit_dataset(root, coord_scale_m=0.2, *, deep=True, dataset_format='data_v1
                 grasp_ids[gid] = split
                 if deep:
                     _, grasp = ds.raw(i)
-                    for r, t, q, k in zip(grasp['R'].reshape(-1, 3, 3), grasp['t'].reshape(-1, 3),
-                                          grasp['q'].reshape(-1, 22), grasp['K'].reshape(-1, 21, 3)):
-                        if not hand.in_limits(q):
+                    source_squeeze = (dataset_format == 'data_v2' and f.attrs.get('source_protocol') == 'floating_fc'
+                                      and f.attrs.get('squeeze_target_policy') == 'source_control')
+                    for stage, (r, t, q, k) in enumerate(zip(grasp['R'].reshape(-1, 3, 3), grasp['t'].reshape(-1, 3),
+                                          grasp['q'].reshape(-1, 22), grasp['K'].reshape(-1, 21, 3))):
+                        outside = not hand.in_limits(q)
+                        if source_squeeze and stage == STAGE_ORDER.index('squeeze'):
+                            flags = f['grasps/squeeze_outside_static_limits']
+                            if flags.dtype != np.bool_ or flags.shape != (len(f['grasps/q']),) or bool(flags[gi]) != outside:
+                                raise ValueError('squeeze actuator-target limit flag disagrees with calibrated limits')
+                        elif outside:
                             raise ValueError('joint angles outside calibrated hand limits')
                         if not np.allclose(hand.world_keypoints(r, t, q), k, atol=2e-6, rtol=1e-5):
                             raise ValueError('stored K disagrees with calibrated FK(R,t,q)')

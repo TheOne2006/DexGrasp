@@ -127,7 +127,7 @@ python -m dexgrasp audit-data --root ../data/dataset_v1
 ## 2026-11-11 正式 object-only 数据
 
 全量 surface-meanh（4,168,807）加独立 tabletop 增量（159,922），总计 4,328,729；首批子集不重复加入。
-正式打包入口是 `scripts/pack_object_corpus.py --source <source> --output <new-local-root> --formal --seed 42`。
+从仓库根目录运行 `TMPDIR=../data ./scripts/python.sh scripts/pack_object_corpus.py --source <source> --output ../data/<新数据集目录> --formal --seed 42`。打包临时文件和最终训练表都经 `data/` 软链接写入王唐欣宇在团队盘上的 DexGrasp 目录。
 逐文件 SHA-256 校验后，全量核验唯一 sample ID、有限值、关节限位、旋转、方向与 URDF FK。
 本次 50,407 个源文件通过，4,328,729 行 FK 最大绝对误差 3.045e-8 m。
 

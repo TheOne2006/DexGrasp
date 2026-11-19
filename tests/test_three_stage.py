@@ -241,6 +241,28 @@ class ThreeStageModelTests(unittest.TestCase):
 
 
 class PairedDataTests(unittest.TestCase):
+    def test_flagged_actuator_squeeze_keeps_raw_fk_and_other_limits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hand, _ = paired_shard(root)
+            path = root/'shards/part.h5'
+            with h5py.File(path, 'r+') as f:
+                g = f['grasps']
+                q = g['q'][0, 2]
+                q[0] = hand.upper[0] + .25
+                g['q'][0, 2] = q
+                g['keypoints_gt'][0, 2] = hand.world_keypoints(g['R'][0, 2], g['t'][0, 2], q)
+                g['squeeze_outside_static_limits'] = [True, False, False, False]
+            with self.assertRaisesRegex(ValueError, 'outside calibrated'):
+                audit_dataset(root, dataset_format='data_v2')
+            with h5py.File(path, 'r+') as f:
+                f.attrs.update(source_protocol='floating_fc', squeeze_target_policy='source_control')
+            self.assertEqual(audit_dataset(root, dataset_format='data_v2')['samples']['train'], 2)
+            with h5py.File(path, 'r+') as f:
+                f['grasps/squeeze_outside_static_limits'][0] = False
+            with self.assertRaisesRegex(ValueError, 'limit flag'):
+                audit_dataset(root, dataset_format='data_v2')
+
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

@@ -81,8 +81,14 @@ def plan(cfg):
     except (ValueError, OSError, KeyError, TypeError) as exc:
         blockers.append(f'hand calibration: {exc}')
     try:
-        dataset = audit_dataset(cfg['dataset_root'], cfg['model'].get('coord_scale_m', 0.2), deep=False,
-                                dataset_format=cfg.get('dataset_format', 'data_v1'), official_test_root=cfg.get('official_test_root'))
+        scale = cfg['model'].get('coord_scale_m', 0.2)
+        if cfg.get('dataset_format') in ('packed', 'packed_v2'):
+            from ..data.formal_corpus import verified_packed_identity
+            dataset = verified_packed_identity(cfg['dataset_root'], scale,
+                paired=cfg['dataset_format'] == 'packed_v2', official_test_root=cfg.get('official_test_root'))
+        else:
+            dataset = audit_dataset(cfg['dataset_root'], scale, deep=False,
+                dataset_format=cfg.get('dataset_format', 'data_v1'), official_test_root=cfg.get('official_test_root'))
     except (ValueError, OSError, KeyError, IndexError, TypeError) as exc:
         dataset = None
         blockers.append(f'dataset: {exc}')

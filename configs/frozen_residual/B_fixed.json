@@ -4,5 +4,8 @@
     "variant": "object_direction_adaln_h_less",
     "self_attention_backend": "centered_fp32"
   },
-  "grasp_steps": 20
+  "grasp_steps": 20,
+  "residual_depth": 4,
+  "residual_width": 320,
+  "residual_heads": 5
 }

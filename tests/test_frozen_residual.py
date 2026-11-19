@@ -1,8 +1,10 @@
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import torch
+from dexgrasp.models.config import read_model_settings
 from dexgrasp.models.frozen_residual import FrozenResidualConfig, FrozenResidualModel
 from dexgrasp.models.registry import sample_model
 from dexgrasp.train.distributed import FMLossModule
@@ -10,9 +12,28 @@ from helpers import FixtureEncoder, condition
 
 
 class FrozenResidualTests(unittest.TestCase):
+    def test_branch_sizes_and_unversioned_checkpoint_defaults(self):
+        root = Path(__file__).resolve().parents[1] / 'configs' / 'frozen_residual'
+        for name, depth, width, heads, count in (
+            ('B_fixed_2x256', 2, 256, 4, 3_169_283),
+            ('B_fixed_4x256', 4, 256, 4, 5_936_131),
+            ('B_fixed', 4, 320, 5, 9_160_835),
+        ):
+            with self.subTest(name=name), torch.device('meta'):
+                cfg = FrozenResidualConfig(**read_model_settings(root / f'{name}.json'))
+                model = FrozenResidualModel(cfg, encoder_factory=FixtureEncoder)
+                for branch in (model.pregrasp, model.squeeze):
+                    self.assertEqual(len(branch.blocks), depth)
+                    self.assertEqual(branch.state.out_features, width)
+                    self.assertEqual(branch.blocks[0].self_attention.heads, heads)
+                    self.assertEqual(sum(p.numel() for p in branch.parameters()), count)
+                if name == 'B_fixed_2x256':
+                    self.assertEqual(cfg, FrozenResidualConfig(grasp_model=cfg.grasp_model))
+
     def test_parent_endpoint_freeze_and_candidate_order(self):
         cfg = FrozenResidualConfig(grasp_model=dict(width=32, heads=4, tokens=8, depth=2,
-                                   backbone_channels=16, variant='object_direction_adaln_h_less'), grasp_steps=2)
+                                   backbone_channels=16, variant='object_direction_adaln_h_less'), grasp_steps=2,
+                                   residual_depth=4, residual_width=320, residual_heads=5)
         model = FrozenResidualModel(cfg, encoder_factory=FixtureEncoder).train()
         c = condition()
         poses = torch.randn(2, 3, 21, 3)
@@ -36,6 +57,8 @@ class FrozenResidualTests(unittest.TestCase):
             torch.testing.assert_close(poses[:, 1], final_grasp)
             torch.testing.assert_close(t, torch.ones(4))
         self.assertEqual(model.grasp.object_encoder.calls, calls+1)
+        uncached = sample_model(model, c, steps=2, candidates=2, noise=noise, cache_kv=False)
+        torch.testing.assert_close(uncached, poses, rtol=1e-5, atol=2e-6)
         changed = noise.clone()
         changed[:, 0] += .2
         other = sample_model(model, c, steps=2, candidates=2, noise=changed, cache_kv=False)

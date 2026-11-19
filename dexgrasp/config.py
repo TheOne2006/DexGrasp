@@ -40,7 +40,7 @@ def load_config(path):
             if internal in raw:
                 raise ValueError(f'use only one of {public} and {internal}')
             raw[internal] = raw.pop(public)
-    if raw.get('dataset_format') == 'data_v2':
+    if raw.get('dataset_format') in ('data_v2', 'packed_v2'):
         # V2 has no agreed training recipe. Do not inherit the historical V1 experiment budget.
         required = {'batch_size', 'accumulation', 'max_steps', 'optimizer', 'lr', 'weight_decay',
                     'lr_schedule', 'precision'}
@@ -91,7 +91,7 @@ def load_config(path):
     for key in ('lr', 'weight_decay', 'grad_clip', 'full_interval_probability', 'muon_lr', 'muon_momentum', 'abort_grad_norm'):
         if not isinstance(cfg[key], (int, float)) or not math.isfinite(cfg[key]):
             raise ValueError(f'{key} must be finite')
-    if cfg['dataset_format'] not in ('data_v1', 'data_v2', 'object_corpus', 'packed'):
+    if cfg['dataset_format'] not in ('data_v1', 'data_v2', 'object_corpus', 'packed', 'packed_v2'):
         raise ValueError('unsupported dataset_format')
     if cfg['data_loading'] not in ('stream', 'gpu_cache'):
         raise ValueError('data_loading must be stream or gpu_cache')
@@ -123,7 +123,7 @@ def load_config(path):
     if cfg['method'] not in branch.default_steps:
         raise ValueError(f'method {cfg["method"]!r} is unavailable for the selected model family')
     if hasattr(branch.config_type, 'validate_recipe'):
-        branch.config_type.validate_recipe(model, cfg['dataset_format'])
+        branch.config_type.validate_recipe(model, 'data_v2' if cfg['dataset_format'] == 'packed_v2' else cfg['dataset_format'])
     # Hand length is loaded from hand_spec at plan/run time, never guessed here.
     if 'hand_reference_length_m' in model:
         raise ValueError('hand_reference_length_m belongs in the calibrated hand_spec')

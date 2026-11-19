@@ -7,7 +7,7 @@ import tempfile
 import shutil
 import numpy as np
 import h5py
-from .dataset import contained, sha256
+from .dataset import contained, sha256, official_test_objects, STAGE_ORDER
 from ..geometry.hand import URDFHand
 
 
@@ -125,12 +125,13 @@ def audit_and_split(shards, observations, out, hand_path, seed):
         scratch.cleanup()
 
 
-def verified_packed_identity(root, scale):
+def verified_packed_identity(root, scale, *, paired=False, official_test_root=None):
     root=Path(root)
     manifest=json.loads((root/'packed.json').read_text())
     protocol=json.loads((root/'split_protocol.json').read_text())
-    if (manifest.get('split_status')!='formal_object_asset_v1' or
-            manifest['coord_scale_m']!=scale or protocol['schema']!='dexgrasp-formal-split-v1' or
+    split_status = 'official_object_ids_v2' if paired else 'formal_object_asset_v1'
+    schema = 'dexgrasp-official-split-v2' if paired else 'dexgrasp-formal-split-v1'
+    if (manifest.get('split_status') != split_status or manifest['coord_scale_m'] != scale or protocol['schema'] != schema or
             not protocol['audit']['full_fk'] or protocol['audit']['rows']!=manifest['samples'] or
             manifest['split_protocol_sha256']!=sha256(root/'split_protocol.json')):
         raise ValueError('formal packed audit/split missing or changed')
@@ -153,7 +154,38 @@ def verified_packed_identity(root, scale):
     if any(len(rows)!=protocol['samples'][key] or len(rows)!=manifest['splits'][key]['count']
            for key,rows in [('train',train),('test',test)]):
         raise ValueError('split counts changed')
-    return dict(schema='dexgrasp-formal-packed-identity-v1',deep=True,samples=protocol['samples'],
+    if paired:
+        if not official_test_root:
+            raise ValueError('paired packed training needs the frozen official test lists')
+        official, hashes = official_test_objects(official_test_root)
+        if hashes != protocol['official_test_sha256'] or tuple(manifest['stage_order']) != STAGE_ORDER:
+            raise ValueError('official test lists or stage order changed')
+        def column(key):
+            return np.load(contained(root, manifest['arrays'][key]['path']), mmap_mode='r', allow_pickle=False)
+        expected_conditions = {
+            'object_points': {'array': 'object_points', 'index': 'observation_index'},
+            'grasp_direction_cmd': {'array': 'grasp_direction_cmd'}, 'h32': {'array': 'h32'}}
+        if manifest['condition'] != expected_conditions or manifest['target'] != {'array': 'keypoints_gt'}:
+            raise ValueError('invalid paired packed column mapping')
+        for split in ('train', 'test'):
+            name = split + '_rows'
+            if manifest['splits'][split]['array'] != name or manifest['arrays'][name]['path'] != name + '.npy':
+                raise ValueError('paired loader must use verified split rows')
+        observation = column('observation_index')
+        objects = column('observation_object_id')
+        count = manifest['samples']
+        for name, shape in [('keypoints_gt', (count, 3, 21, 3)), ('object_points', (len(objects), 1024, 3)),
+                            ('grasp_direction_cmd', (count, 3)), ('h32', (count, 1))]:
+            values = column(name)
+            if values.shape != shape or values.dtype != np.float32:
+                raise ValueError('invalid paired packed column: ' + name)
+        if (observation.shape != (count,) or observation.dtype.kind not in 'iu' or
+                observation.min() < 0 or observation.max() >= len(objects)):
+            raise ValueError('invalid observation references in paired packed rows')
+        held_out = np.array([name in official for name in objects])[observation]
+        if not held_out[test].all() or held_out[train].any():
+            raise ValueError('paired test must equal the official object intersection')
+    return dict(schema='dexgrasp-paired-packed-identity-v2' if paired else 'dexgrasp-formal-packed-identity-v1',deep=True,samples=protocol['samples'],
                 packed_sha256=sha256(root/'packed.json'),split_protocol_sha256=manifest['split_protocol_sha256'],
                 hand_spec_sha256=manifest['hand_spec_sha256'],hand_urdf_sha256=manifest['hand_urdf_sha256'],
                 source_identity=manifest['source_identity'],audit=protocol['audit'])

@@ -10,6 +10,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dexgrasp.test.frozen import digest, save
+from dexgrasp.test.force_summary import solved_force_metrics
 
 
 def read(path):
@@ -21,12 +22,14 @@ def evaluate_group(job):
     scene = engine.floating_scene(stages / "assets", plan["groups"][gid])
     context = engine.make_scene(scene, hand_xml, spec, settings)
     result = np.zeros((4, len(indices)), dtype=bool)
+    solved = np.zeros_like(result)
     for j, array in enumerate(poses.values()):
         for col, i in enumerate(indices):
             if array[i]["decoded"]:
-                outcomes, _ = engine.test_pose(context, array[i], rotation, settings)
+                outcomes, method = engine.test_pose(context, array[i], rotation, settings)
                 result[j, col] = outcomes["derived"]
-    return indices, result
+                solved[j, col] = method == "contact_qp"
+    return indices, result, solved
 
 
 def main(args):
@@ -85,18 +88,24 @@ def main(args):
             if not (chunks / f"{job[0]}.npz").exists()
         ]
         for future in as_completed(pending):
-            ids, values = future.result()
+            ids, values, solved = future.result()
             path = chunks / f"{geometry[ids[0]]}.npz"
             tmp = path.with_suffix(".partial")
             with tmp.open("wb") as f:
-                np.savez(f, ids=ids, values=values)
+                np.savez(f, ids=ids, values=values, solved=solved)
             tmp.replace(path)
     outcomes = np.zeros((4, n), dtype=bool)
+    solved = np.zeros_like(outcomes)
     for gid, ids in jobs:
         with np.load(chunks / f"{gid}.npz") as z:
             np.testing.assert_array_equal(ids, z["ids"])
             outcomes[:, ids] = z["values"]
+            solved[:, ids] = z["solved"]
     np.save(out / "outcomes.npy", outcomes)
+    np.save(out / "both_solved.npy", solved)
+    save(out / "conditional_summary.json", {
+        group: solved_force_metrics(solved[j], outcomes[j], objects) for j, group in enumerate(poses)
+    })
     report = {}
     for j, name in enumerate(poses):
         passed = outcomes[j]

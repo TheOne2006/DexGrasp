@@ -8,6 +8,32 @@ from pathlib import Path
 import numpy as np
 
 
+def solved_force_metrics(solved, passed, units):
+    """Use the original draw budget and group eligible successes by evaluation unit."""
+    solved, passed, units = map(np.asarray, (solved, passed, units))
+    if (
+        solved.dtype != bool
+        or passed.dtype != bool
+        or not (solved.shape == passed.shape == units.shape)
+    ):
+        raise ValueError("Expected aligned eligibility, verdict and evaluation-unit arrays")
+    hits = solved & passed
+    n = int(solved.sum())
+    eligible_units = len(np.unique(units[solved]))
+    ok_units = len(np.unique(units[hits]))
+    return dict(
+        attempted=solved.size,
+        solved=n,
+        passed=int(hits.sum()),
+        coverage=n / solved.size if solved.size else None,
+        gsr=int(hits.sum()) / n if n else None,
+        units=len(np.unique(units)),
+        eligible_units=eligible_units,
+        passed_units=ok_units,
+        osr=ok_units / eligible_units if eligible_units else None,
+    )
+
+
 def summarize_official(inputs, output, io_workers=24):
     plan = json.loads((Path(inputs) / "plan.json").read_text())
     scenes = plan["scenes"]

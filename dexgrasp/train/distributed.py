@@ -92,7 +92,7 @@ def streaming_loader(cfg, model, world, rank, start, stop):
     else:
         from ..data.packed import PackedTrainingDataset
         from ..data.object_corpus import ObjectCorpusDataset
-        factory = PackedTrainingDataset if cfg['dataset_format'] == 'packed' else ObjectCorpusDataset
+        factory = PackedTrainingDataset if cfg['dataset_format'] in ('packed', 'packed_v2') else ObjectCorpusDataset
         dataset = factory(cfg['dataset_root'], 'train', model.cfg.coord_scale_m, condition_keys=model.cfg.condition_keys)
     stream = GlobalBatchStream(len(dataset), cfg['batch_size'], world, rank, cfg['seed'])
     sampler = StreamBatchSampler(stream, start*cfg['accumulation'], stop*cfg['accumulation'])
@@ -168,7 +168,7 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
         raise ValueError('resume and fork_from are mutually exclusive')
     if cfg.get('dataset_format', 'data_v1') == 'object_corpus':
         raise ValueError('Formal corpus training requires audited packed tables')
-    if cfg.get('dataset_format') == 'packed' and cfg['data_loading'] != 'stream':
+    if cfg.get('dataset_format') in ('packed', 'packed_v2') and cfg['data_loading'] != 'stream':
         raise ValueError('Packed corpus requires streaming input')
     rank, world = int(os.environ['RANK']), int(os.environ['WORLD_SIZE'])
     if world < 1 or not 0 <= rank < world:
@@ -197,9 +197,10 @@ def run(cfg, *, resume=None, stop_after=None, fork_from=None):
         if rank == 0:
             try:
                 scale = cfg['model'].get('coord_scale_m', 0.2)
-                if cfg.get('dataset_format') == 'packed':
+                if cfg.get('dataset_format') in ('packed', 'packed_v2'):
                     from ..data.formal_corpus import verified_packed_identity
-                    identity_box[0] = verified_packed_identity(cfg['dataset_root'], scale)
+                    identity_box[0] = verified_packed_identity(cfg['dataset_root'], scale,
+                        paired=cfg['dataset_format'] == 'packed_v2', official_test_root=cfg.get('official_test_root'))
                 else:
                     audit_options = dict(dataset_format=cfg.get('dataset_format', 'data_v1'),
                                          official_test_root=cfg.get('official_test_root'))

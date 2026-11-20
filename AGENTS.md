@@ -4,8 +4,11 @@
 - 三个业务部分统一称为 data、train、test。自有最终评估划分称 `test`；数据适配层保留上游 `test.json`，兼容早期 `evaluation` 标签。`tests/` 仅用于软件单元测试。
 - `docs/` 仅保留 `model-v1.md`（当前架构与用户原始架构说明）和 `data.md`（数据协议与来源）。目录职责见 `README.md`；参考清单 `configs/references.json` 记录来源和接口，不要求固定上游 commit。
 - 自有模型训练不依赖 reference；FK/IK 等显式适配器按需使用参考代码。移植代码时保留来源说明及对应版权/许可证文本，业务修改在本仓库落地。
+- diversity 算法、GPU 执行和评估入口统一在 `simulation/dexonomy/diversity/` 内维护；仓库外实验脚本仅作历史快照和结果追溯，不作为正式评估的运行依赖。
+- 本地实验的临时脚本、机器专用配置、日志、结果、图表和 profiling 产物统一放在 `.local/experiments/<experiment_id>/`，该目录由根 `.gitignore` 整体忽略。历史仓库外数据可保留原路径并在该忽略目录内建立链接；不要把一次性实验 worker 放进正式源码或 scripts 目录。
+- 可复用算法、正式 CLI/worker、软件测试和公开配置模板仍纳入版本管理，不得为隐藏实验而忽略整个源码、tests 或 configs 目录。提交前核对 `git ls-files -ci --exclude-standard` 和待提交清单；本地实验产物不得用 `git add -f` 强制加入。
 - 数据展示板及其服务、展示导出工具放在上层 `../site/`，与本仓库同级，不纳入训练和测试代码仓库。
-- 从仓库使用 `../data/` 和 `../checkpoints/` 软链接访问团队盘 `/mnt/dexsimdata/wangtangxinyu/DexGrasp/` 下的同名目录。原始包、用于处理的副本、派生数据和训练数据缓存均写入 `../data/`。若链接失效，先恢复团队盘入口。运行结果使用 `../outputs/`。不要将这些大文件提交到 GitHub。
+- 从仓库使用 `../data/` 和 `../checkpoints/` 软链接访问团队盘 `/mnt/dexsimdata/wangtangxinyu/DexGrasp/` 下的同名目录。原始包、用于处理的副本、派生数据和训练数据缓存均写入 `../data/`。若链接失效，先恢复团队盘入口。共享运行和历史结果使用 `../outputs/`；新建本地实验工作目录使用上述 `.local/experiments/` 约定。不要将这些数据与产物提交到 GitHub。
 - 训练按实验配置的 save_every 永久保留独立的 `step_XXXXXX.pt` 检查点；2026-11-11 正式四组对照按用户要求每 5,000 个 optimizer step 保存，历史实验保留原间隔，结束时也保留最终版本；`last.pt` 仅作为最新恢复入口。未经用户明确要求，不清理这些历史检查点。
 - 不修改其他 EPIC 项目、共享环境或系统设置。没有明确授权时不提交、不推送、不启动正式训练。
 - 修改数据或评估接口后运行相关软件测试；不得把 IK 拟合成功当作物理抓取成功。当前训练循环单元测试禁用 optimizer.step。

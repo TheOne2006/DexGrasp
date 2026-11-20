@@ -16,13 +16,14 @@ from .defaults import configured_parameters, PROFILE_RESOURCE_SHA256
 from .features import features_from_records
 from .hand import (DEFAULT_KEYPOINT_COUNT, DEFAULT_KEYPOINT_SCHEME,
                    LANDMARK_RESOURCE_SHA256, SharpaHand)
-from .metrics import _options, _integer, evaluate_pair_features
+from .metrics import _options, _integer, _execution_options, evaluate_pair_features
 
 
 def evaluate_dataset(inputs, *, asset_root, config=None, protocol='auto', selection='success',
                      mode='exact', pairs_per_grasp=100, num_pairs=None, seed=0,
-                     batch_size=16384, feature_batch_size=1024, temp_dir=None,
-                     diagnostics=True, save_features=None, progress=None):
+                     batch_size=None, feature_batch_size=1024, temp_dir=None,
+                     diagnostics=True, save_features=None, progress=None,
+                     device='cpu', prefetch=True):
     """Read native records once and evaluate one global feature array.
 
     Batched FK descriptors are staged as a contiguous temporary file, then read
@@ -32,6 +33,7 @@ def evaluate_dataset(inputs, *, asset_root, config=None, protocol='auto', select
     """
     started = time.monotonic()
     config, profile = configured_parameters(config)
+    batch_size = _execution_options(device, batch_size, prefetch)
     _options(mode, pairs_per_grasp, num_pairs, seed, batch_size)
     if not isinstance(diagnostics, bool):
         raise ValueError('diagnostics must be boolean')
@@ -126,7 +128,8 @@ def evaluate_dataset(inputs, *, asset_root, config=None, protocol='auto', select
     feature_seconds = time.monotonic() - started
     metric_started = time.monotonic()
     report = evaluate_pair_features(z, mode=mode, pairs_per_grasp=pairs_per_grasp,
-        num_pairs=num_pairs, seed=seed, batch_size=batch_size, diagnostics=diagnostics)
+        num_pairs=num_pairs, seed=seed, batch_size=batch_size, diagnostics=diagnostics,
+        device=device, prefetch=prefetch)
     counts.update(num_groups=len(groups), num_objects=len(objects), grasps_used=len(z),
                   singleton_condition_groups=sum(g['n_records'] == 1 for g in groups.values()))
     u = report['total_U']

@@ -22,3 +22,36 @@ __pycache__/
 
 .venv-*/
 /docs/agent-context/
+
+# Machine-local experiments: scripts, private configs, logs, reports and links.
+# Keep reusable implementations in dexgrasp/, simulation/dexonomy/, scripts/
+# and tests/. New local runs belong under .local/experiments/<experiment_id>/.
+/.local/
+
+# Compatibility/output locations used by local launchers. These are directories,
+# not blanket exclusions of JSON/NPY/CSV/PNG files or versioned test fixtures.
+/experiments/
+/results/
+/runs/
+/logs/
+/output/
+/tmp/
+/scratch/
+/simulation/experiments/
+/simulation/results/
+/simulation/runs/
+/simulation/logs/
+/simulation/output/
+/simulation/outputs/
+
+# Runtime caches and experiment trackers, at any depth.
+.cache/
+wandb/
+mlruns/
+lightning_logs/
+.coverage
+.coverage.*
+htmlcov/
+*.nsys-rep
+*.ncu-rep
+*.qdrep

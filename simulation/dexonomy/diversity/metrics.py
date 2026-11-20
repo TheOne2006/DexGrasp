@@ -1,4 +1,4 @@
-"""CPU streaming means over all global nonself pairs of weighted descriptors.
+"""CPU/CUDA streaming means over global nonself pairs of weighted descriptors.
 
 Exact mode enumerates every unordered pair once. Sample mode draws ordered
 nonself pairs uniformly with replacement; both directions share the kernel.
@@ -8,9 +8,21 @@ from __future__ import annotations
 
 import math
 from numbers import Integral
+import re
+import time
 import numpy as np
 
 BLOCKS = ("joint", "translation", "rotation", "hand")
+
+
+def _execution_options(device, batch_size, prefetch):
+    if not isinstance(device, str) or re.fullmatch(r'cpu|cuda(?::[0-9]+)?', device) is None:
+        raise ValueError('device must be cpu, cuda, or cuda:<index>')
+    if not isinstance(prefetch, bool):
+        raise ValueError('prefetch must be boolean')
+    if batch_size is None:
+        batch_size = 16384 if device == 'cpu' else 262144
+    return _integer(batch_size, 'batch_size')
 
 
 def _integer(value, name, *, minimum=1):
@@ -33,8 +45,7 @@ def _sample_pairs(n, count, batch_size, seed):
     rng = np.random.default_rng(seed)
     for start in range(0, count, batch_size):
         ids = rng.integers(n * (n - 1), size=min(batch_size, count - start))
-        first = ids // (n - 1)
-        second = ids % (n - 1)
+        first, second = np.divmod(ids, n - 1)
         second += second >= first
         yield first, second
 
@@ -59,7 +70,8 @@ def _squared_kernels(features, first, second):
 
 
 def evaluate_pair_features(features, *, mode="exact", pairs_per_grasp=100,
-                           num_pairs=None, seed=0, batch_size=16384, diagnostics=True):
+                           num_pairs=None, seed=0, batch_size=None, diagnostics=True,
+                           device='cpu', prefetch=True):
     """Evaluate Q=1-mean(exp(-squared_distance)) over the whole feature array.
 
     Features already include physical scales and square-root block weights.
@@ -67,7 +79,13 @@ def evaluate_pair_features(features, *, mode="exact", pairs_per_grasp=100,
     rotation9 and hand3L. This API applies no additional scaling or grouping.
     Only global N<2 is unavailable. Sample B is num_pairs or c*N, including
     records whose object/condition happens to contain only one grasp.
+
+    device='cuda' enables FP64 GPU batches and bounded CPU pair prefetch in
+    sample mode. Default batch sizes: CPU 16384, CUDA 262144. CPU remains the
+    default and never imports Torch. CUDA requests never silently fall back.
     """
+    started = time.perf_counter()
+    batch_size = _execution_options(device, batch_size, prefetch)
     pairs_per_grasp, num_pairs, seed, batch_size = _options(mode, pairs_per_grasp, num_pairs, seed, batch_size)
     if not isinstance(diagnostics, bool):
         raise ValueError("diagnostics must be boolean")
@@ -92,19 +110,28 @@ def evaluate_pair_features(features, *, mode="exact", pairs_per_grasp=100,
     mean = np.zeros(4, dtype=np.float64)
     centered_sum_squares = np.zeros(4, dtype=np.float64)
     seen = 0
+    execution = dict(backend='numpy' if device == 'cpu' else 'none', device=device,
+                     dtype='float64', pair_prefetch=False, feature_upload_seconds=0., pair_seconds=0.)
     if n >= 2:
         batches = _exact_pairs(n, batch_size) if mode == "exact" else _sample_pairs(n, count, batch_size, seed)
-        for first, second in batches:
-            values = _squared_kernels(z, first, second)
-            batch_count = len(values)
-            batch_mean = values.mean(axis=0)
-            centered = values - batch_mean
-            batch_ss = np.einsum("ij,ij->j", centered, centered)
-            total = seen + batch_count
-            delta = batch_mean - mean
-            centered_sum_squares += batch_ss + delta * delta * (seen * batch_count / total)
-            mean += delta * (batch_count / total)
-            seen = total
+        if device != 'cpu':
+            from ._cuda import accumulate
+            seen, mean, centered_sum_squares, execution = accumulate(
+                z, batches, device=device, prefetch=prefetch and mode == 'sample')
+        else:
+            pair_started = time.perf_counter()
+            for first, second in batches:
+                values = _squared_kernels(z, first, second)
+                batch_count = len(values)
+                batch_mean = values.mean(axis=0)
+                centered = values - batch_mean
+                batch_ss = np.einsum("ij,ij->j", centered, centered)
+                total = seen + batch_count
+                delta = batch_mean - mean
+                centered_sum_squares += batch_ss + delta * delta * (seen * batch_count / total)
+                mean += delta * (batch_count / total)
+                seen = total
+            execution['pair_seconds'] = time.perf_counter() - pair_started
     if seen != count:
         raise RuntimeError("internal global pair enumeration count mismatch")
     mean = np.clip(mean, 0., 1.)
@@ -137,7 +164,8 @@ def evaluate_pair_features(features, *, mode="exact", pairs_per_grasp=100,
     else:
         sampling = "all_unordered_nonself_pairs_once"
         uncertainty_method = "exact"
-    return {"schema": "global-pair-mean-diversity/v1", "pair_scope": "global",
+    execution['metric_total_seconds'] = time.perf_counter() - started
+    return {"schema": "global-pair-mean-diversity/v1", "pair_scope": "global", "execution": execution,
         "status": "complete" if n >= 2 else "no_nonself_pairs",
         "definition": "mu=mean_{all global i<j} exp(-||z_i-z_j||^2); Q=1-mu",
         "aggregation": "uniform global nonself record pairs; no object or condition averaging",

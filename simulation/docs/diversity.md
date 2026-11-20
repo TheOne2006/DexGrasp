@@ -15,25 +15,27 @@ python -m pip install --no-deps -e ./simulation
 # 全部成功输出的精确值，计算所有 N*(N-1)/2 个 pair
 dexgrasp-diversity /path/to/run/checkpoint \
   --asset-root /path/to/assets --mode exact \
-  --output ../outputs/diversity/exact.json
+  --output .local/experiments/diversity/results/exact.json
 
 # 同一全集，均匀、有放回采样 B=1,000,000 个非自身 pair
 dexgrasp-diversity /path/to/run/checkpoint \
   --asset-root /path/to/assets --mode sample --num-pairs 1000000 --seed 0 \
-  --output ../outputs/diversity/sample.json
+  --output .local/experiments/diversity/results/sample.json
 ```
 
-`python -m dexonomy.diversity` 与 `dexgrasp-diversity` 等价。只用 CPU，运行时不加载
-Torch/Warp、不启动物理仿真。NumPy、MuJoCo、trimesh 已包含在 simulation 环境中。
+`python -m dexonomy.diversity` 与 `dexgrasp-diversity` 等价。默认用 CPU，此路径不加载
+Torch/Warp、不启动物理仿真；显式 `--device cuda` 使用 FP64 Torch GPU 计算。
+NumPy、MuJoCo、trimesh、Torch 已包含在 simulation 环境中。
 包括读取与 FK 的计算量：精确模式为 `O(N²)`，采样模式为 `O(N+B)`；内存为 `O(75N + batch_size*75)`，
 不创建 `N×N` 矩阵。大数据集可先用采样模式。
 
 - 不给 `--num-pairs` 时，sample 使用 `B = --pairs-per-grasp × N`（默认 `100×N`）。
   exact 忽略采样预算；采样次数允许超过不同 pair 的数量。
 - 多个输入路径会合成一个全集。**比较不同模板数时分别运行命令**，每次输入该版本全部输出。
-- `--save-features ../outputs/diversity/features.npy` 保存已加权的 `N×75` 特征；
+- `--save-features .local/experiments/diversity/results/features.npy` 保存已加权的 `N×75` 特征；
   `--batch-size` 控制 pair 批量，`--feature-batch-size` 控制 FK 批量。
-- 输出文件、特征文件须使用新路径，避免覆盖历史结果；结果放在仓库外。
+- 输出文件、特征文件须使用新路径，避免覆盖历史结果；本地实验内容统一放在被忽略的
+  `.local/experiments/<experiment_id>/` 下。
 
 Python 接口使用相同默认配置：
 
@@ -49,6 +51,65 @@ print(report["dataset_diversity"])
 # 已保存的加权特征也可直接计算；不要再次施加权重
 # report = evaluate_pair_features(z, mode="exact")
 ```
+
+## GPU 批处理和 CPU 预取
+
+CPU 与 CUDA 共用同一全局 pair 定义、NumPy PCG64 随机序列、固定权重和误差公式。
+CUDA 按批计算四个特征块，并用 float64 的均值/中心二阶矩归约；不启用混合精度或
+自动编译。sample 模式默认用一个 CPU 线程提前准备最多两批索引，与 GPU 计算重叠。
+默认 batch 为 CPU `16384`、CUDA `262144`，可用 `--batch-size` 覆盖；
+`--no-prefetch` 可关闭预取。显式请求 CUDA 而设备不可用时会报错，不静默退回 CPU。
+全集少于两条时不启动 GPU，保持 `no_nonself_pairs` 语义。
+
+GPU 运行遵守项目的 guard、兼容锁、PID 归属和资源余量规则。现有 guard 配置中使用
+项目内的通用 worker，并提供正式 CLI 参数，例如：
+
+```json
+{
+  "worker": "diversity_worker.py",
+  "diversity_args": [
+    "--features", "/path/to/weighted_features.npy",
+    "--mode", "sample", "--pairs-per-grasp", "100", "--seed", "0"
+  ]
+}
+```
+
+这只是附加到现有 guard 配置的片段；其余 GPU UUID、CPU 配额、三把兼容锁、Python、
+source、output_root 和期限仍按既有配置提供。运行入口为
+`simulation/scripts/grouped_production/run.py`。worker 使用 guard 暴露的 `cuda:0`，
+将报告写到该次运行的 `runs/<name>/data/diversity.json`。`diversity_args` 也可以使用原生
+抓姿路径加 `--asset-root`。参考 [生成和评估运行约束](generation-evaluation.md)。
+
+在已由 guard 管理的 Python 进程内，也可以直接调用：
+
+```python
+import numpy as np
+from dexonomy.diversity import evaluate_pair_features
+
+z = np.load("/path/to/weighted_features.npy", mmap_mode="r", allow_pickle=False)
+report = evaluate_pair_features(z, mode="sample", pairs_per_grasp=100,
+                                seed=0, device="cuda:0")
+```
+
+正式 CLI 同样支持 `--features /path/to/weighted_features.npy --device cuda`。
+特征缓存必须已经加权，不能再次施加尺度或权重；该模式不需要 `--asset-root`，与原生输入
+路径互斥，记录输入 SHA256 和形状，但不会根据一个裸特征文件猜测其手模型或校准来源。
+本地任务配置、特征缓存及结果统一放在 `.local/experiments/<experiment_id>/`，由根
+`.gitignore` 整体忽略；已有仓库外历史缓存可在此目录建立访问链接。
+
+时间字段区分如下：
+
+- `execution.pair_seconds`：数据已就绪后的 pair 生成、传输、GPU/CPU 核计算与归约墙钟时间，
+  包含流水线等待；GPU 结果回传同步后才结束计时。
+- `execution.feature_upload_seconds`：CUDA 设备准备及特征上传时间；CPU 为零。
+- `execution.metric_total_seconds`：特征指标 API 整体耗时，包括验证、后端导入/初始化与上传。
+- `feature_loading_seconds`：原生输入读取/FK，或缓存输入打开与哈希校验的时间。
+- `elapsed_seconds`：数据入口整体耗时，不包含启动 Python 解释器和导入模块之前的时间，
+  也不包含最终 JSON 写盘。
+
+性能与 pair 采样误差应在固定特征、pair 预算和多随机种子下测量；比较计算耗时时
+使用 `execution.pair_seconds`，比较端到端耗时时另行记录进程启动至结束的墙钟时间。
+本地实验配置、日志和测量结果放在被忽略的 `.local/experiments/<experiment_id>/`。
 
 ## 输入与筛选
 
@@ -120,6 +181,7 @@ JSON 的主要字段：
 | `scores.translation/rotation/hand` | 单特征块的诊断分数，不能相加当作联合分数 |
 | `hand` / `kernel_profile` / `feature_config` | 点定义、固定配置及来源指纹 |
 | `counts` / `pair_population` | 筛选计数与全局 pair 构成 |
+| `execution` | 实际执行后端、设备、float64 精度、预取状态与分阶段耗时 |
 
 全集不足 2 条时分数为 `null`，状态为 `no_nonself_pairs`。
 采样的 `Q_mc_95_interval` 使用 Hoeffding 界，`pair_mc_standard_error` 为均值标准误；
